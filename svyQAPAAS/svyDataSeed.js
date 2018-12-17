@@ -40,24 +40,17 @@ function createDataSeedFiles() {
 }
 
 /**
- * @properties={typeid:24,uuid:"D92AC432-EE2D-45F6-A0F1-7E0EBE8A5D35"}
+ * @properties={typeid:24,uuid:"9E1D40BE-49BB-401D-85FF-B4E5FF920547"}
  */
-function runDataseedFromWorkspace() {
-	if (application.isInDeveloper()) {
-		var workspacePath = getWorkspacePath();
-		var i, j, seedDbs, subFiles
-		var seeds = plugins.file.convertToJSFile(workspacePath + '/svyQAPAAS/medias/dataseeds/');
-		if (seeds && seeds.isDirectory()) {
-			seedDbs = seeds.listFiles();
-			for (i in seedDbs) {
-				if (seedDbs[i].isDirectory()) {
-					subFiles = seedDbs[i].listFiles();
-					for (j in subFiles) {
-						if (subFiles[j].getName().match('.csv')) {
-							importCsvFile(seedDbs[i].getName(), subFiles[j].getAbsoluteFile());
-						}
-					}
-				}
+function runDataseedFromMedia() {
+	var mediaList = solutionModel.getMediaList();
+	for each(var media in mediaList) {
+		if (media && media.getName().match('dataseeds')) {
+			if (media.getName().match('.csv')) {
+				var splitString = media.getName().split('/');
+				var tableName = splitString.pop().replace('.csv','');
+				var dbName = splitString.pop();
+				importCsvFile(dbName, tableName, scopes.svyDataUtils.byteArrayToString(media.bytes, 'UTF-8'));
 			}
 		}
 	}
@@ -66,41 +59,51 @@ function runDataseedFromWorkspace() {
 /**
  * @private
  * @param {String} dbName
- * @param {plugins.file.JSFile} csvFile
+ * @param {String} tableName
+ * @param {String} data
  *
  * @properties={typeid:24,uuid:"51493998-12F6-4CA9-A869-7DC65DAAB682"}
  */
-function importCsvFile(dbName, csvFile) {
-	if (databaseManager.getDatabaseProductName(dbName)) {
-		try {
-			var fileName = csvFile.getName().split('/').pop();
-			fileName = fileName.split('.')[0];
-			application.output('Import of file: ' + dbName + ' / ' + fileName + ' -Started-');
-			var table =  databaseManager.getTable(dbName, fileName);
+function importCsvFile(dbName, tableName, data) {
+	try {
+		application.output('Import of file: ' + dbName + ' / ' + tableName + ' -Started-', LOGGINGLEVEL.INFO);
+		var table =  databaseManager.getTable(dbName, tableName);
+		if(table) {
 			plugins.rawSQL.executeSQL(dbName, 'TRUNCATE TABLE ' + table.getQuotedSQLName() + ' CASCADE');
-			if (plugins.file.getFileSize(csvFile) > 0) {
-				var csv = scopes.svyDataUtils.parseCSV(plugins.file.readTXTFile(csvFile));
-					
+			var csv = scopes.svyDataUtils.parseCSV(data);
+			if (csv.data.length > 0) {
+				var counter = 0;
+				var queryToExec = [];
 				for each (var row in csv.data) {
-					var query = 'INSERT INTO ' + table.getQuotedSQLName() + ' ('+  csv.columnNames.join(',')+') VALUES (' + row.map(function(value, index) {
-						if(value || !table.getColumn(csv.columnNames[index]).getAllowNull()) {
-							return "'" + value + "'";
-						} else {
-							return 'null';
+					counter++;
+					if(row.length && row[0] != undefined) {
+						var query = 'INSERT INTO ' + table.getQuotedSQLName() + ' ('+  csv.columnNames.join(', ')+') VALUES (' + row.map(function(value, index) {
+							if((value && value != 0) || !table.getColumn(csv.columnNames[index]).getAllowNull()) {
+								return "'" + utils.stringReplace(value,"'","''") + "'";
+							} else {
+								return 'null';
+							}
+						}).join(', ') + ');'
+						
+						queryToExec.push(query);
+						if(counter % 200 == 0) {
+							plugins.rawSQL.executeSQL(dbName,queryToExec.join('\n'));
+							queryToExec = [];
+							application.output('Executed insert sql ' + counter + ' of ' + csv.data.length, LOGGINGLEVEL.DEBUG);
 						}
-					}).join(',') + ');'
-					
-					plugins.rawSQL.executeSQL(dbName,query);
+					}
 				}
-				
-				application.output('Import of file: ' + dbName + ' / ' + fileName + ' -done-');
+				plugins.rawSQL.executeSQL(dbName,queryToExec.join('\n'));
+				application.output('Executed insert sql ' + counter + ' of ' + csv.data.length, LOGGINGLEVEL.DEBUG);
+				application.output('Import of file: ' + dbName + ' / ' + tableName + ' -done-', LOGGINGLEVEL.INFO);
 			} else {
-				application.output('Import of file: ' + dbName + ' / ' + fileName + ' -skipped / empty-');
+				application.output('Import of file: ' + dbName + ' / ' + tableName + ' -skipped / empty-', LOGGINGLEVEL.INFO);
 			}
-		} catch (e) {
-			application.output(csvFile.getName() + ' has Errors', LOGGINGLEVEL.ERROR);
+		} else {
+			application.output('Import of file: ' + dbName + ' / ' + tableName + ' -skipped / table not found on server!!-', LOGGINGLEVEL.INFO);
 		}
-
+	} catch (e) {
+		application.output(dbName + '/' + tableName + ' has Errors', LOGGINGLEVEL.ERROR);
 	}
 	return true;
 }
