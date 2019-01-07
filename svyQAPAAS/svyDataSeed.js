@@ -12,71 +12,82 @@ function getWorkspacePath() {
 }
 
 /**
+ * @public
  * @properties={typeid:24,uuid:"B89674BA-49DE-4B32-829B-2181B69D44A5"}
  */
 function createDataSeedFiles() {
 	if (application.isInDeveloper()) {
 		var databases = databaseManager.getServerNames();
 		var selectedDB = plugins.dialogs.showSelectDialog('Generate dataseed', 'Select DB to generate dataseed from', databases);
-		var workspacePath = getWorkspacePath();
-		var tables = databaseManager.getTableNames(selectedDB);
-		var dbFolderPath = workspacePath + scopes.svyIO.getFileSeperator() + 'svyQAPAAS' + scopes.svyIO.getFileSeperator() + 'medias' + scopes.svyIO.getFileSeperator() + 'dataseeds' + scopes.svyIO.getFileSeperator() + selectedDB
-
-		plugins.file.deleteFolder(dbFolderPath, false);
-		plugins.file.createFolder(dbFolderPath)
-
-		for each (var table in tables) {
-			var fs = databaseManager.getFoundSet(selectedDB, table);
-			fs.loadAllRecords();
-
-			if (!utils.hasRecords(fs)) {
-				continue;
-			}
-
-			var fsQuery = databaseManager.getSQL(fs, false);
-			var fsQueryParams = databaseManager.getSQLParameters(fs, false);
-			var jsTable = databaseManager.getTable(fs);
-			var dataProviderIds = jsTable.getColumnNames();
-			var pkColumns = jsTable.getRowIdentifierColumnNames();
-			var qualifiedDataproviderIds = [];
-			table = jsTable.getQuotedSQLName()
-			for (var d = 0; d < dataProviderIds.length; d++) {
-				qualifiedDataproviderIds.push(table + "." + dataProviderIds[d]);
-			}
-			for (var p = 0; p < pkColumns.length; p++) {
-				pkColumns[p] = table + "." + pkColumns[p];
-			}
-
-			var pkArgToReplace = 'select ' + pkColumns.join(', ');
-			fsQuery = utils.stringReplace(fsQuery, pkArgToReplace, 'select ' + qualifiedDataproviderIds.join(', '));
-			
-			var dataset = databaseManager.getDataSetByQuery(selectedDB, fsQuery, fsQueryParams, -1);
-			var exportFile = plugins.file.convertToJSFile(dbFolderPath + scopes.svyIO.getFileSeperator() + jsTable.getSQLName() + '.csv');
-			var dataToWrite = [];
-
-			plugins.file.writeTXTFile(exportFile, dataset.getColumnNames().join(';$;') + '\n', 'UTF-8');
-			for (var i = 1; i <= dataset.getMaxRowIndex(); i++) {
-				var dataRow = dataset.getRowAsArray(i);
-				dataRow.map(/**@param {String} value */function(value) {
-					if(value && (typeof value) == 'string' && value.match('\n')) {
-						value = value.replace(/\n/,'\n')
-					}
-				})
-				dataToWrite.push(dataRow.join(';$;'));
-				if (dataToWrite.length == 5000) {
-					plugins.file.appendToTXTFile(exportFile, dataToWrite.join('\n') + '\n', 'UTF-8');
-					dataToWrite = [];
-				}
-			}
-			plugins.file.appendToTXTFile(exportFile, dataToWrite.join('\n'), 'UTF-8');
-
-			application.output('Export of table: ' + selectedDB + ' / ' + table + ' -done-');
-		}
+		createDataSeedFile(selectedDB);
 	}
-
 }
 
 /**
+ * @public
+ * @param {String} selectedDB
+ *
+ * @properties={typeid:24,uuid:"67C8AFB5-1DE1-43D0-BFA9-4AFBDFFB50E3"}
+ */
+function createDataSeedFile(selectedDB) {
+	var workspacePath = getWorkspacePath();
+	var tables = databaseManager.getTableNames(selectedDB);
+	var dbFolderPath = workspacePath + scopes.svyIO.getFileSeperator() + 'svyQAPAAS' + scopes.svyIO.getFileSeperator() + 'medias' + scopes.svyIO.getFileSeperator() + 'dataseeds' + scopes.svyIO.getFileSeperator() + selectedDB
+
+	plugins.file.deleteFolder(dbFolderPath, false);
+	plugins.file.createFolder(dbFolderPath)
+
+	for each (var table in tables) {
+		var fs = databaseManager.getFoundSet(selectedDB, table);
+		fs.loadAllRecords();
+
+		if (!utils.hasRecords(fs)) {
+			continue;
+		}
+
+		var fsQuery = databaseManager.getSQL(fs, false);
+		var fsQueryParams = databaseManager.getSQLParameters(fs, false);
+		var jsTable = databaseManager.getTable(fs);
+		var dataProviderIds = jsTable.getColumnNames();
+		var pkColumns = jsTable.getRowIdentifierColumnNames();
+		var qualifiedDataproviderIds = [];
+		table = jsTable.getQuotedSQLName()
+		for (var d = 0; d < dataProviderIds.length; d++) {
+			qualifiedDataproviderIds.push(table + "." + dataProviderIds[d]);
+		}
+		for (var p = 0; p < pkColumns.length; p++) {
+			pkColumns[p] = table + "." + pkColumns[p];
+		}
+
+		var pkArgToReplace = 'select ' + pkColumns.join(', ');
+		fsQuery = utils.stringReplace(fsQuery, pkArgToReplace, 'select ' + qualifiedDataproviderIds.join(', '));
+
+		var dataset = databaseManager.getDataSetByQuery(selectedDB, fsQuery, fsQueryParams, -1);
+		var exportFile = plugins.file.convertToJSFile(dbFolderPath + scopes.svyIO.getFileSeperator() + jsTable.getSQLName() + '.csv');
+		var dataToWrite = [];
+
+		plugins.file.writeTXTFile(exportFile, dataset.getColumnNames().join(';$;') + '\n', 'UTF-8');
+		for (var i = 1; i <= dataset.getMaxRowIndex(); i++) {
+			var dataRow = dataset.getRowAsArray(i);
+			dataRow.map(/**@param {String} value */function(value) {
+				if (value && (typeof value) == 'string' && value.match('\n')) {
+					value = value.replace(/\n/, '\n')
+				}
+			})
+			dataToWrite.push(dataRow.join(';$;'));
+			if (dataToWrite.length == 5000) {
+				plugins.file.appendToTXTFile(exportFile, dataToWrite.join('\n') + '\n', 'UTF-8');
+				dataToWrite = [];
+			}
+		}
+		plugins.file.appendToTXTFile(exportFile, dataToWrite.join('\n'), 'UTF-8');
+
+		application.output('Export of table: ' + selectedDB + ' / ' + table + ' -done-');
+	}
+}
+
+/**
+ * @public
  * @properties={typeid:24,uuid:"9E1D40BE-49BB-401D-85FF-B4E5FF920547"}
  */
 function runDataseedFromMedia() {
@@ -130,9 +141,9 @@ function importCsvFile(dbName, tableName, file) {
 									if (value) {
 										value = utils.dateFormat(new Date(value), 'yyyy-MM-dd HH:mm:ss');
 									}
-								} else if(table.getColumn(header[index]).getType() == JSColumn.TEXT) {
-									if(value) {
-										value = utils.stringReplace(value,'\\n','\n');
+								} else if (table.getColumn(header[index]).getType() == JSColumn.TEXT) {
+									if (value) {
+										value = utils.stringReplace(value, '\\n', '\n');
 									}
 								}
 
@@ -164,7 +175,7 @@ function importCsvFile(dbName, tableName, file) {
 
 	scopes.svyIO.readFile(file, importData, 'UTF-8');
 
-	if(queryToExec.length != 0 ) {
+	if (queryToExec.length != 0) {
 		plugins.rawSQL.executeSQL(dbName, queryToExec.join('\n'));
 		application.output('Executed insert sql ' + counter + ' of ' + lineCount, LOGGINGLEVEL.DEBUG);
 	}
