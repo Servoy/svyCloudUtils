@@ -33,9 +33,12 @@ function createDataSeedFile(selectedDB) {
 	var workspacePath = getWorkspacePath();
 	var tables = databaseManager.getTableNames(selectedDB);
 	var dbFolderPath = workspacePath + scopes.svyIO.getFileSeperator() + 'svyQAPAAS' + scopes.svyIO.getFileSeperator() + 'medias' + scopes.svyIO.getFileSeperator() + 'dataseeds' + scopes.svyIO.getFileSeperator() + selectedDB
+	var tempFolder = workspacePath + scopes.svyIO.getFileSeperator() + 'svyQAPAAS' + scopes.svyIO.getFileSeperator() + 'temp_export'
 
 	plugins.file.deleteFolder(dbFolderPath, false);
-	plugins.file.createFolder(dbFolderPath)
+	plugins.file.deleteFolder(tempFolder,false);
+	plugins.file.deleteFile(dbFolderPath + '.zip');
+	plugins.file.createFolder(tempFolder);
 
 	for each (var table in tables) {
 		var fs = databaseManager.getFoundSet(selectedDB, table);
@@ -63,7 +66,7 @@ function createDataSeedFile(selectedDB) {
 		fsQuery = utils.stringReplace(fsQuery, pkArgToReplace, 'select ' + qualifiedDataproviderIds.join(', '));
 
 		var dataset = databaseManager.getDataSetByQuery(selectedDB, fsQuery, fsQueryParams, -1);
-		var exportFile = plugins.file.convertToJSFile(dbFolderPath + scopes.svyIO.getFileSeperator() + jsTable.getSQLName() + '.csv');
+		var exportFile = plugins.file.convertToJSFile(tempFolder + scopes.svyIO.getFileSeperator() + jsTable.getSQLName() + '.csv');
 		var dataToWrite = [];
 
 		plugins.file.writeTXTFile(exportFile, dataset.getColumnNames().join(';$;') + '\n', 'UTF-8');
@@ -84,6 +87,9 @@ function createDataSeedFile(selectedDB) {
 
 		application.output('Export of table: ' + selectedDB + ' / ' + table + ' -done-');
 	}
+	
+	scopes.svyIO.zip(plugins.file.convertToJSFile(tempFolder),plugins.file.convertToJSFile(dbFolderPath + '.zip'));
+	plugins.file.deleteFolder(tempFolder,false)
 }
 
 /**
@@ -91,14 +97,33 @@ function createDataSeedFile(selectedDB) {
  * @properties={typeid:24,uuid:"9E1D40BE-49BB-401D-85FF-B4E5FF920547"}
  */
 function runDataseedFromMedia() {
+	var file, tableName, dbName
 	var mediaList = solutionModel.getMediaList();
 	for each (var media in mediaList) {
 		if (media && media.getName().match('dataseeds')) {
-			if (media.getName().match('.csv')) {
-				var splitString = media.getName().split('/');
-				var tableName = splitString.pop().replace('.csv', '');
-				var dbName = splitString.pop();
-				var file = plugins.file.createTempFile('', '.csv');
+			var splitString = media.getName().split('/');
+			if (media.getName().match('.zip')) {
+				dbName = splitString.pop().replace('.zip','');
+				file = plugins.file.createTempFile('', '.zip');
+				plugins.file.writeFile(file, media.bytes);
+				var unzipedFolder = scopes.svyIO.unzip(file);
+				if(unzipedFolder && unzipedFolder.isDirectory()) {
+					var zipContent = plugins.file.getFolderContents(unzipedFolder);
+					zipContent.forEach(/**@param {plugins.file.JSFile} folderItem */ function(folderItem) {
+						if(folderItem.isFile() && folderItem.getName().match('.csv')) {
+							tableName = folderItem.getName().replace('.csv', '');
+							importCsvFile(dbName, tableName, folderItem);
+						}
+					})
+				}
+				
+				plugins.file.deleteFile(file);
+				plugins.file.deleteFolder(unzipedFolder,false);
+				
+			} else if (media.getName().match('.csv')) {
+				tableName = splitString.pop().replace('.csv', '');
+				dbName = splitString.pop();
+				file = plugins.file.createTempFile('', '.csv');
 				plugins.file.writeFile(file, media.bytes)
 				importCsvFile(dbName, tableName, file);
 				file.deleteFile();
