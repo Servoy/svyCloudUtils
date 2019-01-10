@@ -204,6 +204,7 @@ function importCsvFile(dbName, tableName, file) {
 		plugins.rawSQL.executeSQL(dbName, queryToExec.join('\n'));
 		application.output('Executed insert sql ' + counter + ' of ' + lineCount, LOGGINGLEVEL.DEBUG);
 	}
+	plugins.rawSQL.flushAllClientsCache(dbName,tableName);
 	application.output('Import of file: ' + dbName + ' / ' + tableName + ' -done-', LOGGINGLEVEL.INFO);
 
 	return true;
