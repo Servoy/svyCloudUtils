@@ -13,27 +13,38 @@ function getWorkspacePath() {
 
 /**
  * @public
+ * @param {String} [customPathToSVYQapaas]
  * @properties={typeid:24,uuid:"B89674BA-49DE-4B32-829B-2181B69D44A5"}
  */
-function createDataSeedFiles() {
+function createDataSeedFiles(customPathToSVYQapaas) {
 	if (application.isInDeveloper()) {
 		var databases = databaseManager.getServerNames();
 		var selectedDB = plugins.dialogs.showSelectDialog('Generate dataseed', 'Select DB to generate dataseed from', databases);
-		createDataSeedFile(selectedDB);
+		createDataSeedFile(selectedDB, customPathToSVYQapaas);
 	}
 }
 
 /**
  * @public
  * @param {String} selectedDB
+ * @param {String} [customPathToSVYQapaas]
  *
  * @properties={typeid:24,uuid:"67C8AFB5-1DE1-43D0-BFA9-4AFBDFFB50E3"}
  */
-function createDataSeedFile(selectedDB) {
+function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
+	if(!selectedDB) {
+		return;
+	}
+	
 	var workspacePath = getWorkspacePath();
 	var tables = databaseManager.getTableNames(selectedDB);
+	
 	var dbFolderPath = workspacePath + scopes.svyIO.getFileSeperator() + 'svyQAPAAS' + scopes.svyIO.getFileSeperator() + 'medias' + scopes.svyIO.getFileSeperator() + 'dataseeds' + scopes.svyIO.getFileSeperator() + selectedDB
 	var tempFolder = workspacePath + scopes.svyIO.getFileSeperator() + 'svyQAPAAS' + scopes.svyIO.getFileSeperator() + 'temp_export'
+	if(customPathToSVYQapaas) {
+		dbFolderPath = customPathToSVYQapaas + scopes.svyIO.getFileSeperator() + 'medias' + scopes.svyIO.getFileSeperator() + 'dataseeds' + scopes.svyIO.getFileSeperator() + selectedDB
+		tempFolder = customPathToSVYQapaas + scopes.svyIO.getFileSeperator() + 'temp_export'
+	}
 
 	plugins.file.deleteFolder(dbFolderPath, false);
 	plugins.file.deleteFolder(tempFolder,false);
@@ -89,7 +100,9 @@ function createDataSeedFile(selectedDB) {
 	}
 	
 	scopes.svyIO.zip(plugins.file.convertToJSFile(tempFolder),plugins.file.convertToJSFile(dbFolderPath + '.zip'));
-	plugins.file.deleteFolder(tempFolder,false)
+	plugins.file.deleteFolder(tempFolder,false);
+	
+	application.output('Export of database: ' + selectedDB + ' -done-');
 }
 
 /**
