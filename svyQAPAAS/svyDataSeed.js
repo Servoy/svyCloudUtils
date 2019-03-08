@@ -67,10 +67,10 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
 		var qualifiedDataproviderIds = [];
 		table = jsTable.getQuotedSQLName()
 		for (var d = 0; d < dataProviderIds.length; d++) {
-			qualifiedDataproviderIds.push(table + "." + dataProviderIds[d]);
+			qualifiedDataproviderIds.push(table + "." + jsTable.getColumn(dataProviderIds[d]).getQuotedSQLName());
 		}
 		for (var p = 0; p < pkColumns.length; p++) {
-			pkColumns[p] = table + "." + pkColumns[p];
+			pkColumns[p] = table + "." + jsTable.getColumn(pkColumns[p]).getQuotedSQLName();
 		}
 
 		var pkArgToReplace = 'select ' + pkColumns.join(', ');
