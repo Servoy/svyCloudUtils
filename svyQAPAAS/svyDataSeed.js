@@ -165,8 +165,14 @@ function importCsvFile(dbName, tableName, file) {
 		var table = databaseManager.getTable(dbName, tableName);
 		if (table) {
 			//Assume it is the first line, so do init calles;
-			if (!header) {
-				plugins.rawSQL.executeSQL(dbName, 'TRUNCATE TABLE ' + table.getQuotedSQLName() + ' CASCADE');
+			if (!header) {	
+				var deleteSql = 'TRUNCATE TABLE ' + table.getQuotedSQLName() + ' CASCADE'
+				if(databaseManager.getDatabaseProductName(dbName).match('microsoft')) {
+					deleteSql = "alter table "+ table.getQuotedSQLName() + " nocheck constraint all;\
+								 delete from " + table.getQuotedSQLName() + ";\
+								 alter table "+ table.getQuotedSQLName() + " check constraint all;" 
+				}
+				plugins.rawSQL.executeSQL(dbName, deleteSql);
 				header = line;
 			} else {
 
