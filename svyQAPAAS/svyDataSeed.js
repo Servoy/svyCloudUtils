@@ -189,6 +189,7 @@ function importCsvFile(dbName, tableName, file) {
 					if (line.length && line[0] != undefined) {
 						var query = 'INSERT INTO ' + table.getQuotedSQLName() + ' (' + header.join(', ') + ') VALUES (' + line.map(function(value, index) {
 								//Convert types
+								if (table.getColumn(header[index])) {
 									if (table.getColumn(header[index]).getType() == JSColumn.DATETIME) {
 										if (value) {
 											value = utils.dateFormat(new Date(value), 'yyyy-MM-dd HH:mm:ss');
@@ -205,6 +206,7 @@ function importCsvFile(dbName, tableName, file) {
 									} else {
 										return 'null';
 									}
+								}
 							}).join(', ') + ');'
 
 						queryToExec.push(query);
