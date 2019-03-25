@@ -6,6 +6,12 @@
 *metadata\
 *\.metadata\
 
+#resources files
+resources
+resources
+*resources
+*resources
+
 #log files#
 *.log
 
