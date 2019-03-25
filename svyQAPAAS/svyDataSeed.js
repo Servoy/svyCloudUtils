@@ -32,36 +32,44 @@ function createDataSeedFiles(customPathToSVYQapaas) {
  * @properties={typeid:24,uuid:"67C8AFB5-1DE1-43D0-BFA9-4AFBDFFB50E3"}
  */
 function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
-	if(!selectedDB) {
+	if (!selectedDB) {
 		return;
 	}
 	
 	var workspacePath = getWorkspacePath();
 	var tables = databaseManager.getTableNames(selectedDB);
-	
+
 	var dbFolderPath = workspacePath + scopes.svyIO.getFileSeperator() + 'svyQAPAAS' + scopes.svyIO.getFileSeperator() + 'medias' + scopes.svyIO.getFileSeperator() + 'dataseeds' + scopes.svyIO.getFileSeperator() + selectedDB
 	var tempFolder = workspacePath + scopes.svyIO.getFileSeperator() + 'svyQAPAAS' + scopes.svyIO.getFileSeperator() + 'temp_export'
-	if(customPathToSVYQapaas) {
+	if (customPathToSVYQapaas) {
 		dbFolderPath = customPathToSVYQapaas + scopes.svyIO.getFileSeperator() + 'medias' + scopes.svyIO.getFileSeperator() + 'dataseeds' + scopes.svyIO.getFileSeperator() + selectedDB
 		tempFolder = customPathToSVYQapaas + scopes.svyIO.getFileSeperator() + 'temp_export'
 	}
 
 	plugins.file.deleteFolder(dbFolderPath, false);
-	plugins.file.deleteFolder(tempFolder,false);
+	plugins.file.deleteFolder(tempFolder, false);
 	plugins.file.deleteFile(dbFolderPath + '.zip');
 	plugins.file.createFolder(tempFolder);
 
 	for each (var table in tables) {
 		var fs = databaseManager.getFoundSet(selectedDB, table);
+		var jsTable = databaseManager.getTable(fs);
+		
+		if (databaseManager.getTable(fs).isMetadataTable()) {
+			application.output("Skipping metadata table: " + jsTable.getDataSource(), LOGGINGLEVEL.DEBUG);
+			continue
+		} else if(Packages.com.servoy.j2db.J2DBGlobals.getServiceProvider().getSolution().getI18nDataSource() == jsTable.getDataSource()) { 
+			application.output("Skipping i18n table: " + jsTable.getDataSource(), LOGGINGLEVEL.DEBUG);
+			continue
+		}
+		
 		fs.loadAllRecords();
-
 		if (!utils.hasRecords(fs)) {
 			continue;
 		}
 
 		var fsQuery = databaseManager.getSQL(fs, false);
 		var fsQueryParams = databaseManager.getSQLParameters(fs, false);
-		var jsTable = databaseManager.getTable(fs);
 		var dataProviderIds = jsTable.getColumnNames();
 		var pkColumns = jsTable.getRowIdentifierColumnNames();
 		var qualifiedDataproviderIds = [];
@@ -98,10 +106,10 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
 
 		application.output('Export of table: ' + selectedDB + ' / ' + table + ' -done-');
 	}
-	
-	scopes.svyIO.zip(plugins.file.convertToJSFile(tempFolder),plugins.file.convertToJSFile(dbFolderPath + '.zip'));
-	plugins.file.deleteFolder(tempFolder,false);
-	
+
+	scopes.svyIO.zip(plugins.file.convertToJSFile(tempFolder), plugins.file.convertToJSFile(dbFolderPath + '.zip'));
+	plugins.file.deleteFolder(tempFolder, false);
+
 	application.output('Export of database: ' + selectedDB + ' -done-');
 }
 
@@ -116,23 +124,23 @@ function runDataseedFromMedia() {
 		if (media && media.getName().match('dataseeds')) {
 			var splitString = media.getName().split('/');
 			if (media.getName().match('.zip')) {
-				dbName = splitString.pop().replace('.zip','');
+				dbName = splitString.pop().replace('.zip', '');
 				file = plugins.file.createTempFile('', '.zip');
 				plugins.file.writeFile(file, media.bytes);
 				var unzipedFolder = scopes.svyIO.unzip(file);
-				if(unzipedFolder && unzipedFolder.isDirectory()) {
+				if (unzipedFolder && unzipedFolder.isDirectory()) {
 					var zipContent = plugins.file.getFolderContents(unzipedFolder);
 					zipContent.forEach(/**@param {plugins.file.JSFile} folderItem */ function(folderItem) {
-						if(folderItem.isFile() && folderItem.getName().match('.csv')) {
+						if (folderItem.isFile() && folderItem.getName().match('.csv')) {
 							tableName = folderItem.getName().replace('.csv', '');
 							importCsvFile(dbName, tableName, folderItem);
 						}
 					})
 				}
-				
+
 				plugins.file.deleteFile(file);
-				plugins.file.deleteFolder(unzipedFolder,false);
-				
+				plugins.file.deleteFolder(unzipedFolder, false);
+
 			} else if (media.getName().match('.csv')) {
 				tableName = splitString.pop().replace('.csv', '');
 				dbName = splitString.pop();
@@ -165,7 +173,7 @@ function importCsvFile(dbName, tableName, file) {
 		var table = databaseManager.getTable(dbName, tableName);
 		if (table) {
 			//Assume it is the first line, so do init calles;
-			if (!header) {	
+			if (!header) {
 				var deleteSql = 'TRUNCATE TABLE ' + table.getQuotedSQLName() + ' CASCADE'
 				if(databaseManager.getDatabaseProductName(dbName).match('microsoft')) {
 					deleteSql = "alter table "+ table.getQuotedSQLName() + " nocheck constraint all;\
@@ -181,22 +189,22 @@ function importCsvFile(dbName, tableName, file) {
 					if (line.length && line[0] != undefined) {
 						var query = 'INSERT INTO ' + table.getQuotedSQLName() + ' (' + header.join(', ') + ') VALUES (' + line.map(function(value, index) {
 								//Convert types
-								if (table.getColumn(header[index]).getType() == JSColumn.DATETIME) {
-									if (value) {
-										value = utils.dateFormat(new Date(value), 'yyyy-MM-dd HH:mm:ss');
+									if (table.getColumn(header[index]).getType() == JSColumn.DATETIME) {
+										if (value) {
+											value = utils.dateFormat(new Date(value), 'yyyy-MM-dd HH:mm:ss');
+										}
+									} else if (table.getColumn(header[index]).getType() == JSColumn.TEXT) {
+										if (value) {
+											value = utils.stringReplace(value, '\\n', '\n');
+										}
 									}
-								} else if (table.getColumn(header[index]).getType() == JSColumn.TEXT) {
-									if (value) {
-										value = utils.stringReplace(value, '\\n', '\n');
-									}
-								}
 
-								//Parse as string & add null values
-								if ( (value && value != 0) || !table.getColumn(header[index]).getAllowNull()) {
-									return "'" + utils.stringReplace(value, "'", "''") + "'";
-								} else {
-									return 'null';
-								}
+									//Parse as string & add null values
+									if ( (value && value != 0) || !table.getColumn(header[index]).getAllowNull()) {
+										return "'" + utils.stringReplace(value, "'", "''") + "'";
+									} else {
+										return 'null';
+									}
 							}).join(', ') + ');'
 
 						queryToExec.push(query);
@@ -223,7 +231,7 @@ function importCsvFile(dbName, tableName, file) {
 		plugins.rawSQL.executeSQL(dbName, queryToExec.join('\n'));
 		application.output('Executed insert sql ' + counter + ' of ' + lineCount, LOGGINGLEVEL.DEBUG);
 	}
-	plugins.rawSQL.flushAllClientsCache(dbName,tableName);
+	plugins.rawSQL.flushAllClientsCache(dbName, tableName);
 	application.output('Import of file: ' + dbName + ' / ' + tableName + ' -done-', LOGGINGLEVEL.INFO);
 
 	return true;
