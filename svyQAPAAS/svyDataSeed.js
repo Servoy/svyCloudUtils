@@ -25,30 +25,50 @@ function createDataSeedFiles(customPathToSVYQapaas) {
 }
 
 /**
+ * @public 
+ * @param {String|Boolean} dataseedToRemove Dataseed to Remove, boolean true will remove all
+ * @param {String} [customDataseedPath]
+ * @properties={typeid:24,uuid:"EA5C78EC-8BD9-47AB-B45C-AF24BBC470B7"}
+ */
+function removeExistingDataSeedFile(dataseedToRemove, customDataseedPath) {
+	var workspacePath = getWorkspacePath();
+	var dbFolderPathArray = [workspacePath, 'svyQAPAAS', 'medias', 'dataseeds'];
+	if(customDataseedPath) {
+		dbFolderPathArray = [customDataseedPath,'medias', 'dataseeds'];
+	}
+	
+	if(dataseedToRemove instanceof Boolean) {
+		plugins.file.deleteFolder(dbFolderPathArray.join(scopes.svyIO.getFileSeperator()), false);
+	} else {
+		dbFolderPathArray.push(dataseedToRemove.toString());
+		plugins.file.deleteFolder(dbFolderPathArray.join(scopes.svyIO.getFileSeperator()), false);
+		plugins.file.deleteFile(dbFolderPathArray.join(scopes.svyIO.getFileSeperator()) + '.zip');
+	}
+}
+
+/**
  * @public
  * @param {String} selectedDB
  * @param {String} [customPathToSVYQapaas]
+ * @return {Boolean}
  *
  * @properties={typeid:24,uuid:"67C8AFB5-1DE1-43D0-BFA9-4AFBDFFB50E3"}
  */
 function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
 	if (!selectedDB) {
-		return;
+		return false;
 	}
 	
 	var workspacePath = getWorkspacePath();
 	var tables = databaseManager.getTableNames(selectedDB);
-
-	var dbFolderPath = workspacePath + scopes.svyIO.getFileSeperator() + 'svyQAPAAS' + scopes.svyIO.getFileSeperator() + 'medias' + scopes.svyIO.getFileSeperator() + 'dataseeds' + scopes.svyIO.getFileSeperator() + selectedDB
-	var tempFolder = workspacePath + scopes.svyIO.getFileSeperator() + 'svyQAPAAS' + scopes.svyIO.getFileSeperator() + 'temp_export'
+	var dbFolderPath = [workspacePath, 'svyQAPAAS', 'medias', 'dataseeds',selectedDB].join(scopes.svyIO.getFileSeperator());
+	var tempFolder = [workspacePath, 'svyQAPAAS','temp_export'].join(scopes.svyIO.getFileSeperator());
 	if (customPathToSVYQapaas) {
-		dbFolderPath = customPathToSVYQapaas + scopes.svyIO.getFileSeperator() + 'medias' + scopes.svyIO.getFileSeperator() + 'dataseeds' + scopes.svyIO.getFileSeperator() + selectedDB
-		tempFolder = customPathToSVYQapaas + scopes.svyIO.getFileSeperator() + 'temp_export'
+		dbFolderPath = [customPathToSVYQapaas, 'medias', 'dataseeds', selectedDB].join(scopes.svyIO.getFileSeperator());
+		tempFolder = [customPathToSVYQapaas, 'temp_export'].join(scopes.svyIO.getFileSeperator());
 	}
 
-	plugins.file.deleteFolder(dbFolderPath, false);
-	plugins.file.deleteFolder(tempFolder, false);
-	plugins.file.deleteFile(dbFolderPath + '.zip');
+	removeExistingDataSeedFile(selectedDB, customPathToSVYQapaas);
 	plugins.file.createFolder(tempFolder);
 
 	for each (var table in tables) {
