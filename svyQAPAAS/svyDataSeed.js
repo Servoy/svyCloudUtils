@@ -106,33 +106,37 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
 
 		var dataset = databaseManager.getDataSetByQuery(selectedDB, fsQuery, fsQueryParams, -1);
 		var exportFile = plugins.file.convertToJSFile(tempFolder + scopes.svyIO.getFileSeperator() + jsTable.getSQLName() + '.csv');
-		var dataToWrite = [];
-
-		plugins.file.writeTXTFile(exportFile, dataset.getColumnNames().join(';$;') + '\n', 'UTF-8');
+		var emptyDs = databaseManager.createEmptyDataSet(0,dataset.getColumnNames())
+		
+		//Need to split it this way, will get error when doing a convert of 1 million+ records
 		for (var i = 1; i <= dataset.getMaxRowIndex(); i++) {
-			var dataRow = dataset.getRowAsArray(i);
-			dataRow.map(/**@param {String} value */function(value) {
-				if (value && (typeof value) == 'string' && value.match('\n')) {
-					value = value.replace(/\n/, '\n')
+			emptyDs.addRow(dataset.getRowAsArray(i));
+			if (emptyDs.getMaxRowIndex() == 5000) {
+				if(plugins.file.getFileSize(exportFile) == 0) {
+					plugins.file.writeTXTFile(exportFile, emptyDs.getAsText(',','\n','"',true), 'UTF-8');
+				} else {
+					plugins.file.appendToTXTFile(exportFile, emptyDs.getAsText(',','\n','"',true), 'UTF-8');
 				}
-			})
-			dataToWrite.push(dataRow.join(';$;'));
-			if (dataToWrite.length == 5000) {
-				plugins.file.appendToTXTFile(exportFile, dataToWrite.join('\n') + '\n', 'UTF-8');
-				dataToWrite = [];
+				emptyDs = databaseManager.createEmptyDataSet(0,dataset.getColumnNames());
 			}
 		}
-		plugins.file.appendToTXTFile(exportFile, dataToWrite.join('\n'), 'UTF-8');
+		
+		if(plugins.file.getFileSize(exportFile) == 0) {
+			plugins.file.writeTXTFile(exportFile, emptyDs.getAsText(',','\n','"',true), 'UTF-8');
+		} else {
+			plugins.file.appendToTXTFile(exportFile, emptyDs.getAsText(',','\n','"',true), 'UTF-8');
+		}
 
 		application.output('Export of table: ' + selectedDB + ' / ' + table + ' -done-');
 	}
 
 	if(plugins.file.convertToJSFile(tempFolder).listFiles().length > 0) {
-	scopes.svyIO.zip(plugins.file.convertToJSFile(tempFolder), plugins.file.convertToJSFile(dbFolderPath + '.zip'));
+		scopes.svyIO.zip(plugins.file.convertToJSFile(tempFolder), plugins.file.convertToJSFile(dbFolderPath + '.zip'));
 	}
 	plugins.file.deleteFolder(tempFolder, false);
 
 	application.output('Export of database: ' + selectedDB + ' -done-');
+	return true;
 }
 
 /**
