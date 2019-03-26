@@ -127,7 +127,9 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
 		application.output('Export of table: ' + selectedDB + ' / ' + table + ' -done-');
 	}
 
+	if(plugins.file.convertToJSFile(tempFolder).listFiles().length > 0) {
 	scopes.svyIO.zip(plugins.file.convertToJSFile(tempFolder), plugins.file.convertToJSFile(dbFolderPath + '.zip'));
+	}
 	plugins.file.deleteFolder(tempFolder, false);
 
 	application.output('Export of database: ' + selectedDB + ' -done-');
