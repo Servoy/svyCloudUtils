@@ -84,9 +84,6 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
 		}
 		
 		fs.loadAllRecords();
-		if (!utils.hasRecords(fs)) {
-			continue;
-		}
 
 		var fsQuery = databaseManager.getSQL(fs, false);
 		var fsQueryParams = databaseManager.getSQLParameters(fs, false);
@@ -113,18 +110,18 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
 			emptyDs.addRow(dataset.getRowAsArray(i));
 			if (emptyDs.getMaxRowIndex() == 5000) {
 				if(plugins.file.getFileSize(exportFile) == 0) {
-					plugins.file.writeTXTFile(exportFile, emptyDs.getAsText(',','\n','"',true), 'UTF-8');
+					plugins.file.writeTXTFile(exportFile, emptyDs.getAsText(',','\r\n','"',true), 'UTF-8');
 				} else {
-					plugins.file.appendToTXTFile(exportFile, emptyDs.getAsText(',','\n','"',true), 'UTF-8');
+					plugins.file.appendToTXTFile(exportFile, emptyDs.getAsText(',','\r\n','"',true), 'UTF-8');
 				}
 				emptyDs = databaseManager.createEmptyDataSet(0,dataset.getColumnNames());
 			}
 		}
 		
 		if(plugins.file.getFileSize(exportFile) == 0) {
-			plugins.file.writeTXTFile(exportFile, emptyDs.getAsText(',','\n','"',true), 'UTF-8');
+			plugins.file.writeTXTFile(exportFile, emptyDs.getAsText(',','\r\n','"',true), 'UTF-8');
 		} else {
-			plugins.file.appendToTXTFile(exportFile, emptyDs.getAsText(',','\n','"',true), 'UTF-8');
+			plugins.file.appendToTXTFile(exportFile, emptyDs.getAsText(',','\r\n','"',true), 'UTF-8');
 		}
 
 		application.output('Export of table: ' + selectedDB + ' / ' + table + ' -done-');
@@ -188,56 +185,95 @@ function runDataseedFromMedia() {
  * @properties={typeid:24,uuid:"51493998-12F6-4CA9-A869-7DC65DAAB682"}
  */
 function importCsvFile(dbName, tableName, file) {
-	var header = '';
+	/**@type {Array<String>} */
+	var header = [];
+	/**@type {Array<String>} */
+	var fullHeader = [];
 	var counter = 0;
 	var queryToExec = [];
 	var lineCount = scopes.svyIO.getLineCountForFile(file);
+	var columnDiffs = [];
+	var table = databaseManager.getTable(dbName, tableName);
 
-	/**@param {String} line */
-	function importData(line) {
-		line = line.split(';$;');
-		var table = databaseManager.getTable(dbName, tableName);
+	/**@param {Array} lineToImport */
+	function importData(lineToImport) {
 		if (table) {
 			//Assume it is the first line, so do init calles;
-			if (!header) {
-				var deleteSql = 'TRUNCATE TABLE ' + table.getQuotedSQLName() + ' CASCADE'
-				if(databaseManager.getDatabaseProductName(dbName).match('microsoft')) {
-					deleteSql = "alter table "+ table.getQuotedSQLName() + " nocheck constraint all;\
-								 delete from " + table.getQuotedSQLName() + ";\
-								 alter table "+ table.getQuotedSQLName() + " check constraint all;" 
+			if (header.length == 0) {
+				if (isMicrosoftDB(dbName)) {
+					executeQuery(dbName,table,['delete from ' + table.getQuotedSQLName() + ';']);
+				} else {
+					executeQuery(dbName,table,['TRUNCATE TABLE ' + table.getQuotedSQLName() + ' CASCADE']);
 				}
-				plugins.rawSQL.executeSQL(dbName, deleteSql);
-				header = line;
+
+				header = lineToImport;
+				fullHeader = header;
+
+				// verify the header columns
+				columnDiffs = getTableSchemaDiff(table, header);
+				if (columnDiffs.length) {
+					application.output('Table: ' + tableName + ' has more column in export then in table; the following columns don\'t exists in table: ' + columnDiffs.join(','), LOGGINGLEVEL.WARNING);
+				}
+				
+				//Clear header with missing columns
+				header = header.filter(function(item) {
+					return (columnDiffs.indexOf(item) === -1)
+				})
+
 			} else {
-
-				if (line) {
+				if (lineToImport) {
 					counter++;
-					if (line.length && line[0] != undefined) {
-						var query = 'INSERT INTO ' + table.getQuotedSQLName() + ' (' + header.join(', ') + ') VALUES (' + line.map(function(value, index) {
-								//Convert types
-								if (table.getColumn(header[index])) {
-									if (table.getColumn(header[index]).getType() == JSColumn.DATETIME) {
-										if (value) {
-											value = utils.dateFormat(new Date(value), 'yyyy-MM-dd HH:mm:ss');
-										}
-									} else if (table.getColumn(header[index]).getType() == JSColumn.TEXT) {
-										if (value) {
-											value = utils.stringReplace(value, '\\n', '\n');
-										}
-									}
-
-									//Parse as string & add null values
-									if ( (value && value != 0) || !table.getColumn(header[index]).getAllowNull()) {
-										return "'" + utils.stringReplace(value, "'", "''") + "'";
-									} else {
-										return 'null';
-									}
+					if (lineToImport.length && lineToImport[0] != undefined) {
+						
+						lineToImport = lineToImport.filter(function(item,index) {
+							for(var i in columnDiffs) {
+								if(fullHeader.indexOf(columnDiffs[i]) == index) {
+									return false;
 								}
-							}).join(', ') + ');'
+							}
+							return true;
+						})
+						
+						var values = lineToImport.map(
+						/**
+						 * @param {*} value
+						 * @param {Number} index
+						 * @return {String|Number} 
+						 */
+						function(value, index) {
+							var column = table.getColumn(header[index]);
+							//Convert types
+							switch (column.getType()) {
+								case JSColumn.DATETIME:
+									return !value ? 'NULL' : "'" + utils.dateFormat(new Date(value), 'yyyy-MM-dd HH:mm:ss') + "'"; 
+								break;
+								case JSColumn.INTEGER:
+									return value.toString() == '' ? 'NULL' : parseInt(value.toString());
+								break;
+								case JSColumn.NUMBER:
+									return value.toString() == '' ? 'NULL' : parseFloat(value.toString());
+								break;
+								case JSColumn.MEDIA:
+									return 'NULL';
+								break;
+								default:
+									if(!value && column.getAllowNull()){
+										return 'NULL';
+									} else {
+										return "'" + utils.stringReplace(value||"", "'", "''") + "'";
+									}
+								break;
+							}
+						});
+
+						var query = 'INSERT INTO ' + table.getQuotedSQLName() + ' (' + header.join(', ') + ') VALUES (' + values.join(', ') + ');'
 
 						queryToExec.push(query);
 						if (counter % 500 == 0) {
-							plugins.rawSQL.executeSQL(dbName, queryToExec.join('\n'));
+							if(!executeQuery(dbName,table,queryToExec)) {
+								application.output('FAILED TO INSERT insert sql ' + counter + ' of ' + lineCount, LOGGINGLEVEL.ERROR);
+							}
+
 							queryToExec = [];
 							application.output('Executed insert sql ' + counter + ' of ' + lineCount, LOGGINGLEVEL.DEBUG);
 						}
@@ -249,18 +285,122 @@ function importCsvFile(dbName, tableName, file) {
 		} else {
 			application.output('Import of file: ' + dbName + ' / ' + tableName + ' -skipped / table not found on server!!-', LOGGINGLEVEL.INFO);
 		}
+		return true;
 	}
 
 	application.output('Import of file: ' + dbName + ' / ' + tableName + ' -Started-', LOGGINGLEVEL.INFO);
-
-	scopes.svyIO.readFile(file, importData, 'UTF-8');
-
+	
+	if(tableName == 'employees') {
+		application.output('test')
+	}
+	var csvObj = scopes.svyDataUtils.parseCSV(plugins.file.readTXTFile(file,'UTF-8'), {delimiter: ',', firstRowHasColumnNames: true, textQualifier: '"'});
+	importData(csvObj.columnNames)
+	csvObj.data.forEach(function(row) {
+		importData(row);
+	});
+	
 	if (queryToExec.length != 0) {
-		plugins.rawSQL.executeSQL(dbName, queryToExec.join('\n'));
+		if(!executeQuery(dbName,table,queryToExec)) {
+			application.output('FAILED TO INSERT insert sql ' + counter + ' of ' + lineCount, LOGGINGLEVEL.ERROR);
+		}
+
 		application.output('Executed insert sql ' + counter + ' of ' + lineCount, LOGGINGLEVEL.DEBUG);
 	}
 	plugins.rawSQL.flushAllClientsCache(dbName, tableName);
 	application.output('Import of file: ' + dbName + ' / ' + tableName + ' -done-', LOGGINGLEVEL.INFO);
 
 	return true;
+}
+
+
+/**
+ * @private 
+ * @param {String} dbName
+ * @param {JSTable} table
+ * @param {Array<String>} queryToExec
+ * @properties={typeid:24,uuid:"5D709450-106B-4A9C-A5D3-307FF00418AB"}
+ */
+function executeQuery(dbName, table, queryToExec) {
+	var preInsertSQL = '';
+	var postInsertSQL = '';
+	var disableConstraints = '';
+	var enableConstraints = '';
+
+	if (isMicrosoftDB(dbName)) {
+		disableConstraints = "ALTER TABLE " + table.getQuotedSQLName() + " NOCHECK CONSTRAINT ALL;";
+		enableConstraints = "ALTER TABLE " + table.getQuotedSQLName() + " CHECK CONSTRAINT ALL;";
+
+		// enable/disable identity insert
+		if (hasDatabaseIdentity(table)) {
+			preInsertSQL += 'SET IDENTITY_INSERT ' + table.getQuotedSQLName() + ' ON;';
+			postInsertSQL = 'SET IDENTITY_INSERT ' + table.getQuotedSQLName() + ' OFF;' + postInsertSQL;
+		}
+	}
+	
+
+	try {
+		queryToExec.unshift(preInsertSQL);
+		queryToExec.push(postInsertSQL);
+		if (!plugins.rawSQL.executeSQL(dbName, queryToExec.join('\n'))) {
+			throw "fail";
+		}
+	} catch (e) {
+		// NOTE with alter tables it fails silently
+		// NOTE because of an issue in the JDBC driver, when Alter Table is used, the JDBC driver sometimes doesn't recognize the change in the query
+		// It reuse the previous query as prepared statement. SELECT ? where ? = 1 is used to force a refresh of the prepared statement
+		queryToExec.unshift(disableConstraints);
+		queryToExec.push(enableConstraints);
+		queryToExec.push('SELECT ?;');
+		if (!plugins.rawSQL.executeSQL(dbName, queryToExec.join('\n'), [1])) {
+			return false;
+		}
+	}
+	return true;
+}
+/**
+ * @private
+ * @param {JSTable} table
+ * @param {Array<String>} header
+ *
+ * @return {Array<String>} verify the header columns vs the table
+ *
+ * @properties={typeid:24,uuid:"613FBEAA-543C-448C-8DB6-FB6090B87DB1"}
+ */
+function getTableSchemaDiff(table, header) {
+	var missingColumns = [];
+	var tableColumnNames = table.getColumnNames();
+	for (var i = 0; i < header.length; i++) {
+		if (tableColumnNames.indexOf(header[i].toLowerCase()) === -1) {
+			missingColumns.push(header[i]);
+		}
+	}
+	return missingColumns;
+}
+
+/**
+ * @private
+ * @param {JSTable} table
+ *
+ * @return {Boolean}
+ *
+ * @properties={typeid:24,uuid:"35408E0E-9A19-47D0-BB43-32A938217FFC"}
+ */
+function hasDatabaseIdentity(table) {
+	var pks = table.getRowIdentifierColumnNames();
+	for (var i = 0; i < pks.length; i++) {
+		if (table.getColumn(pks[i]).getSequenceType() === JSColumn.DATABASE_IDENTITY) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * @param {String} dbName
+ * @return {Boolean}
+ *
+ * @properties={typeid:24,uuid:"BACF2886-97FF-4632-A811-8C94B56C47F7"}
+ */
+function isMicrosoftDB(dbName) {
+	return databaseManager.getDatabaseProductName(dbName).match('microsoft') ? true : false;
 }
