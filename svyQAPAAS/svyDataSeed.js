@@ -61,14 +61,15 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
 	
 	var workspacePath = getWorkspacePath();
 	var tables = databaseManager.getTableNames(selectedDB);
-	var dbFolderPath = [workspacePath, 'svyQAPAAS', 'medias', 'dataseeds',selectedDB].join(scopes.svyIO.getFileSeperator());
+	var dbFolderPath = [workspacePath, 'svyQAPAAS', 'medias', 'dataseeds'].join(scopes.svyIO.getFileSeperator());
 	var tempFolder = [workspacePath, 'svyQAPAAS','temp_export'].join(scopes.svyIO.getFileSeperator());
 	if (customPathToSVYQapaas) {
-		dbFolderPath = [customPathToSVYQapaas, 'medias', 'dataseeds', selectedDB].join(scopes.svyIO.getFileSeperator());
+		dbFolderPath = [customPathToSVYQapaas, 'medias', 'dataseeds'].join(scopes.svyIO.getFileSeperator());
 		tempFolder = [customPathToSVYQapaas, 'temp_export'].join(scopes.svyIO.getFileSeperator());
 	}
 
 	removeExistingDataSeedFile(selectedDB, customPathToSVYQapaas);
+	plugins.file.createFolder(dbFolderPath);
 	plugins.file.createFolder(tempFolder);
 
 	for each (var table in tables) {
@@ -104,11 +105,12 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
 		var dataset = databaseManager.getDataSetByQuery(selectedDB, fsQuery, fsQueryParams, -1);
 		var exportFile = plugins.file.convertToJSFile(tempFolder + scopes.svyIO.getFileSeperator() + jsTable.getSQLName() + '.csv');
 		var emptyDs = databaseManager.createEmptyDataSet(0,dataset.getColumnNames())
-		
+		var rows = 0;
 		//Need to split it this way, will get error when doing a convert of 1 million+ records
 		for (var i = 1; i <= dataset.getMaxRowIndex(); i++) {
 			emptyDs.addRow(dataset.getRowAsArray(i));
 			if (emptyDs.getMaxRowIndex() == 5000) {
+				rows += emptyDs.getMaxRowIndex();
 				if(plugins.file.getFileSize(exportFile) == 0) {
 					plugins.file.writeTXTFile(exportFile, emptyDs.getAsText(',','\r\n','"',true), 'UTF-8');
 				} else {
@@ -118,17 +120,18 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
 			}
 		}
 		
+		rows += emptyDs.getMaxRowIndex();
 		if(plugins.file.getFileSize(exportFile) == 0) {
 			plugins.file.writeTXTFile(exportFile, emptyDs.getAsText(',','\r\n','"',true), 'UTF-8');
 		} else {
 			plugins.file.appendToTXTFile(exportFile, emptyDs.getAsText(',','\r\n','"',true), 'UTF-8');
 		}
 
-		application.output('Export of table: ' + selectedDB + ' / ' + table + ' -done-');
+		application.output('Export of table: ' + selectedDB + ' / ' + table + ' (rows: ' + rows + ') -done-');
 	}
 
 	if(plugins.file.convertToJSFile(tempFolder).listFiles().length > 0) {
-		scopes.svyIO.zip(plugins.file.convertToJSFile(tempFolder), plugins.file.convertToJSFile(dbFolderPath + '.zip'));
+		scopes.svyIO.zip(plugins.file.convertToJSFile(tempFolder), plugins.file.convertToJSFile(dbFolderPath + scopes.svyIO.getFileSeperator() + selectedDB + '.zip'));
 	}
 	plugins.file.deleteFolder(tempFolder, false);
 
