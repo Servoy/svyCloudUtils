@@ -114,7 +114,7 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
 				if(plugins.file.getFileSize(exportFile) == 0) {
 					plugins.file.writeTXTFile(exportFile, emptyDs.getAsText(',','\r\n','"',true), 'UTF-8');
 				} else {
-					plugins.file.appendToTXTFile(exportFile, emptyDs.getAsText(',','\r\n','"',true), 'UTF-8');
+					plugins.file.appendToTXTFile(exportFile, emptyDs.getAsText(',','\r\n','"',false), 'UTF-8');
 				}
 				emptyDs = databaseManager.createEmptyDataSet(0,dataset.getColumnNames());
 			}
@@ -124,7 +124,7 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
 		if(plugins.file.getFileSize(exportFile) == 0) {
 			plugins.file.writeTXTFile(exportFile, emptyDs.getAsText(',','\r\n','"',true), 'UTF-8');
 		} else {
-			plugins.file.appendToTXTFile(exportFile, emptyDs.getAsText(',','\r\n','"',true), 'UTF-8');
+			plugins.file.appendToTXTFile(exportFile, emptyDs.getAsText(',','\r\n','"',false), 'UTF-8');
 		}
 
 		application.output('Export of table: ' + selectedDB + ' / ' + table + ' (rows: ' + rows + ') -done-');
