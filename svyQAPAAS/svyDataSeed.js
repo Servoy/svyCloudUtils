@@ -251,10 +251,18 @@ function importCsvFile(dbName, tableName, file) {
 									return !value ? 'NULL' : "'" + utils.dateFormat(new Date(value), 'yyyy-MM-dd HH:mm:ss') + "'"; 
 								break;
 								case JSColumn.INTEGER:
-									return value.toString() == '' ? 'NULL' : parseInt(value.toString());
+									var returnInt = ['', 'Infinity', 'NaN'].indexOf(value.toString()) != -1 ? 'NULL' : parseInt(value.toString());
+									if(returnInt == NaN) {
+										returnInt = 'NULL';
+									}
+									return returnInt;
 								break;
 								case JSColumn.NUMBER:
-									return value.toString() == '' ? 'NULL' : parseFloat(value.toString());
+									var returnNum = ['', 'Infinity', 'NaN'].indexOf(value.toString()) != -1 ? 'NULL' : parseFloat(value.toString());
+									if(returnNum == NaN) {
+										returnNum = 'NULL';
+									}
+									return returnNum;
 								break;
 								case JSColumn.MEDIA:
 									return 'NULL';
@@ -263,6 +271,10 @@ function importCsvFile(dbName, tableName, file) {
 									if(!value && column.getAllowNull()){
 										return 'NULL';
 									} else {
+										if(value && value.length > column.getLength()) {
+											value = value.substr(0,column.getLength())
+										}
+										var returnString = "'" + utils.stringReplace(value||"", "'", "''") + "'";
 										return "'" + utils.stringReplace(value||"", "'", "''") + "'";
 									}
 								break;
