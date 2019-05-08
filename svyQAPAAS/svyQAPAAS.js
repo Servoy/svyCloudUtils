@@ -39,6 +39,14 @@ var GIT_COMMIT = '';
 var GIT_BRANCH = '';
 
 /**
+ * @private 
+ * @type {String}
+ *
+ * @properties={typeid:35,uuid:"9DE3357F-1D81-49AA-BFC0-7D534433FA4A"}
+ */
+var SVN_BRANCH = '';
+
+/**
  * @public 
  * @return {Number}
  * 
@@ -107,5 +115,19 @@ function getGitBranch() {
 		return null;
 	} else {
 		return GIT_BRANCH;
+	}
+}
+
+/**
+ * @public 
+ * @return {String}
+ * 
+ * @properties={typeid:24,uuid:"810BF566-35AC-4F61-B360-6ECCB2E2D86C"}
+ */
+function getSVNBranch() {
+	if(!SVN_BRANCH) {
+		return null;
+	} else {
+		return SVN_BRANCH;
 	}
 }
