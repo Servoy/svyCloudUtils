@@ -73,8 +73,13 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
 	plugins.file.createFolder(tempFolder);
 
 	for each (var table in tables) {
-		var fs = databaseManager.getFoundSet(selectedDB, table);
-		var jsTable = databaseManager.getTable(fs);
+		try {
+			var fs = databaseManager.getFoundSet(selectedDB, table);
+			var jsTable = databaseManager.getTable(fs);
+		} catch (e) {
+			application.output(e.message, LOGGINGLEVEL.WARNING)
+			continue;
+		}
 		
 		if (databaseManager.getTable(fs).isMetadataTable()) {
 			application.output("Skipping metadata table: " + jsTable.getDataSource(), LOGGINGLEVEL.DEBUG);
