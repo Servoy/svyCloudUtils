@@ -252,8 +252,11 @@ function importCsvFile(dbName, tableName, file) {
 								break;
 								case JSColumn.INTEGER:
 									var returnInt = ['', 'Infinity', 'NaN'].indexOf(value.toString()) != -1 ? 'NULL' : parseInt(value.toString());
-									if(returnInt == NaN) {
+									if (returnInt == NaN) {
 										returnInt = 'NULL';
+									} else if (returnInt != 'NULL') {
+										// FIX for boolean in postgres
+										returnInt = "'" +returnInt + "'";
 									}
 									return returnInt;
 								break;
