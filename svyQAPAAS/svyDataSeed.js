@@ -1,5 +1,7 @@
 /**
  * @private
+ * @return {String}
+ * 
  * @properties={typeid:24,uuid:"960218D4-695E-4D1E-8472-7AD7AC9B5F99"}
  */
 function getWorkspacePath() {
@@ -77,11 +79,14 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
 			var fs = databaseManager.getFoundSet(selectedDB, table);
 			var jsTable = databaseManager.getTable(fs);
 		} catch (e) {
-			application.output(e.message, LOGGINGLEVEL.WARNING)
+			application.output('Could not get foundset for table: ' + table, LOGGINGLEVEL.DEBUG);
+			application.output(e.message, LOGGINGLEVEL.WARNING);
+			if(true) {
 			continue;
 		}
+		}
 		
-		if (databaseManager.getTable(fs).isMetadataTable()) {
+		if (jsTable.isMetadataTable()) {
 			application.output("Skipping metadata table: " + jsTable.getDataSource(), LOGGINGLEVEL.DEBUG);
 			continue
 		} else if(Packages.com.servoy.j2db.J2DBGlobals.getServiceProvider().getSolution().getI18nDataSource() == jsTable.getDataSource()) { 
@@ -211,7 +216,7 @@ function importCsvFile(dbName, tableName, file) {
 				if (isMicrosoftDB(dbName)) {
 					executeQuery(dbName,table,['delete from ' + table.getQuotedSQLName() + ';']);
 				} else {
-					executeQuery(dbName,table,['TRUNCATE TABLE ' + table.getQuotedSQLName() + ' CASCADE']);
+					executeQuery(dbName,table,['TRUNCATE TABLE ' + table.getQuotedSQLName() + ' CASCADE;']);
 				}
 
 				header = lineToImport;
@@ -360,6 +365,11 @@ function executeQuery(dbName, table, queryToExec) {
 		}
 	}
 	
+	if(isPostgresDB(dbName)) {
+		if(table.getColumn(table.getRowIdentifierColumnNames()[0]).getSequenceType() == JSColumn.DATABASE_SEQUENCE && table.getColumn(table.getRowIdentifierColumnNames()[0]).getType() == JSColumn.INTEGER) {
+			queryToExec.push("SELECT setval(pg_get_serial_sequence('" + table.getSQLName() + "', '"+ table.getRowIdentifierColumnNames()[0]+ "'), COALESCE(CAST(max(" + table.getRowIdentifierColumnNames()[0]+ ") AS INT), 1)) FROM " + table.getQuotedSQLName() + ";");
+		}
+	}
 
 	try {
 		queryToExec.unshift(preInsertSQL);
@@ -378,6 +388,7 @@ function executeQuery(dbName, table, queryToExec) {
 			return false;
 		}
 	}
+	
 	return true;
 }
 /**
@@ -419,6 +430,8 @@ function hasDatabaseIdentity(table) {
 }
 
 /**
+ * @private 
+ * 
  * @param {String} dbName
  * @return {Boolean}
  *
@@ -426,4 +439,16 @@ function hasDatabaseIdentity(table) {
  */
 function isMicrosoftDB(dbName) {
 	return databaseManager.getDatabaseProductName(dbName).match('microsoft') ? true : false;
+}
+
+/**
+ * @private
+ * 
+ * @param {String} dbName
+ * @return {Boolean}
+ *
+ * @properties={typeid:24,uuid:"8F328B4E-B7E9-4D6A-8F9E-F8664CC97052"}
+ */
+function isPostgresDB(dbName) {
+	return databaseManager.getDatabaseProductName(dbName).match('postgres') ? true : false;
 }
