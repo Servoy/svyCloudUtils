@@ -294,7 +294,7 @@ function importCsvFile(dbName, tableName, file) {
 							}
 						});
 
-						var query = 'INSERT INTO ' + table.getQuotedSQLName() + ' (' + header.join(', ') + ') VALUES (' + values.join(', ') + ');'
+						var query = 'INSERT INTO ' + table.getQuotedSQLName() + ' ("' + header.join('", "') + '") VALUES (' + values.join(', ') + ');'
 
 						queryToExec.push(query);
 						if (counter % 500 == 0) {
