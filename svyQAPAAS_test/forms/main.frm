@@ -1,0 +1,26 @@
+customProperties:"formComponent:false",
+encapsulation:108,
+items:[
+{
+height:480,
+partType:5,
+typeid:19,
+uuid:"769B8422-2E4A-461A-8AA9-60A68C39965E"
+},
+{
+location:"15,15",
+onActionMethodID:"42DEAD17-B4D8-4A09-9B78-259FC1FFC30F",
+onDoubleClickMethodID:"-1",
+onRightClickMethodID:"-1",
+rolloverCursor:12,
+size:"179,28",
+text:"Run DB Version",
+typeid:7,
+uuid:"91D84499-7F8C-4DC8-9333-DA9DAD46B03E"
+}
+],
+name:"main",
+navigatorID:"-1",
+showInMenu:true,
+typeid:3,
+uuid:"E5996C9F-ECA5-4233-A06B-8A673F5F4A39"
