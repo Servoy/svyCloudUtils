@@ -153,9 +153,10 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
  * @public
  * @properties={typeid:24,uuid:"9E1D40BE-49BB-401D-85FF-B4E5FF920547"}
  */
-function runDataseedFromMedia() {
+function runDataseedFromMedia(clearTablesNotInSeed) {
 	var file, tableName, dbName
 	var mediaList = solutionModel.getMediaList();
+	var seededTables = [];
 	for each (var media in mediaList) {
 		if (media && media.getName().match('dataseeds')) {
 			var splitString = media.getName().split('/');
@@ -170,14 +171,29 @@ function runDataseedFromMedia() {
 						if (folderItem.isFile() && folderItem.getName().match('.csv')) {
 							tableName = folderItem.getName().replace('.csv', '');
 							importCsvFile(dbName, tableName, folderItem);
+							seededTables.push(tableName);
 						}
 					})
 				}
 
 				plugins.file.deleteFile(file);
 				plugins.file.deleteFolder(unzipedFolder, false);
-
+				
+				if(clearTablesNotInSeed == true) {
+					var tables = databaseManager.getTableNames(dbName);
+					for each(var table in tables) {
+						if(seededTables.indexOf(table) == -1) {
+							var jsTable = databaseManager.getTable(dbName, table);
+							if (isMicrosoftDB(dbName)) {
+								executeQuery(dbName,jsTable,['delete from ' + jsTable.getQuotedSQLName() + ';']);
+							} else {
+								executeQuery(dbName,jsTable,['TRUNCATE TABLE ' + jsTable.getQuotedSQLName() + ' CASCADE;']);
+							}
+						}
+					}
+				}
 			} else if (media.getName().match('.csv')) {
+				//Old way we should stop supporting this.
 				tableName = splitString.pop().replace('.csv', '');
 				dbName = splitString.pop();
 				file = plugins.file.createTempFile('', '.csv');
