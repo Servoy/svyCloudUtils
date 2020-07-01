@@ -329,7 +329,6 @@ function importCsvFile(dbName, tableName, file) {
 										if(value && value.length > column.getLength()) {
 											value = value.substr(0,column.getLength())
 										}
-										var returnString = "'" + utils.stringReplace(value||"", "'", "''") + "'";
 										return "'" + utils.stringReplace(value||"", "'", "''") + "'";
 									}
 								break;
