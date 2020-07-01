@@ -94,27 +94,20 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
 			continue
 		}
 		
-		fs.loadAllRecords();
-
-		var fsQuery = databaseManager.getSQL(fs, false);
-		var fsQueryParams = databaseManager.getSQLParameters(fs, false);
 		var dataProviderIds = jsTable.getColumnNames();
-		var pkColumns = jsTable.getRowIdentifierColumnNames();
-		var qualifiedDataproviderIds = [];
-		table = jsTable.getQuotedSQLName()
+		var sql = databaseManager.createSelect(fs.getDataSource());
 		for (var d = 0; d < dataProviderIds.length; d++) {
-			qualifiedDataproviderIds.push(table + "." + jsTable.getColumn(dataProviderIds[d]).getQuotedSQLName());
+			sql.result.add(sql.columns[dataProviderIds[d]]);
 		}
-		for (var p = 0; p < pkColumns.length; p++) {
-			pkColumns[p] = table + "." + jsTable.getColumn(pkColumns[p]).getQuotedSQLName();
-		}
-
-		var pkArgToReplace = 'select ' + pkColumns.join(', ');
-		fsQuery = utils.stringReplace(fsQuery, pkArgToReplace, 'select ' + qualifiedDataproviderIds.join(', '));
-
-		var dataset = databaseManager.getDataSetByQuery(selectedDB, fsQuery, fsQueryParams, -1);
+	
+		var dataset = databaseManager.getDataSetByQuery(sql, false, -1);
 		var exportFile = plugins.file.convertToJSFile(tempFolder + scopes.svyIO.getFileSeperator() + jsTable.getSQLName() + '.csv');
-		var emptyDs = databaseManager.createEmptyDataSet(0,dataset.getColumnNames())
+		var emptyDs = databaseManager.createEmptyDataSet();
+		var columns = dataset.getColumnNames();
+		for(var c = 0; c <= columns.length; c++) {
+			emptyDs.addColumn(columns[c],c + 1,dataset.getColumnType(c + 1));
+		}
+		
 		var rows = 0;
 		//Need to split it this way, will get error when doing a convert of 1 million+ records
 		for (var i = 1; i <= dataset.getMaxRowIndex(); i++) {
@@ -122,9 +115,9 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
 			if (emptyDs.getMaxRowIndex() == 5000) {
 				rows += emptyDs.getMaxRowIndex();
 				if(plugins.file.getFileSize(exportFile) == 0) {
-					plugins.file.writeTXTFile(exportFile, emptyDs.getAsText(',','\r\n','"',true), 'UTF-8');
+					plugins.file.writeTXTFile(exportFile, dataSetColumnConverter(emptyDs).getAsText(',','\r\n','"',true), 'UTF-8');
 				} else {
-					plugins.file.appendToTXTFile(exportFile, emptyDs.getAsText(',','\r\n','"',false), 'UTF-8');
+					plugins.file.appendToTXTFile(exportFile, dataSetColumnConverter(emptyDs).getAsText(',','\r\n','"',false), 'UTF-8');
 				}
 				emptyDs = databaseManager.createEmptyDataSet(0,dataset.getColumnNames());
 			}
@@ -132,9 +125,9 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
 		
 		rows += emptyDs.getMaxRowIndex();
 		if(plugins.file.getFileSize(exportFile) == 0) {
-			plugins.file.writeTXTFile(exportFile, emptyDs.getAsText(',','\r\n','"',true), 'UTF-8');
+			plugins.file.writeTXTFile(exportFile, dataSetColumnConverter(emptyDs).getAsText(',','\r\n','"',true), 'UTF-8');
 		} else {
-			plugins.file.appendToTXTFile(exportFile, emptyDs.getAsText(',','\r\n','"',false), 'UTF-8');
+			plugins.file.appendToTXTFile(exportFile, dataSetColumnConverter(emptyDs).getAsText(',','\r\n','"',false), 'UTF-8');
 		}
 
 		application.output('Export of table: ' + selectedDB + ' / ' + table + ' (rows: ' + rows + ') -done-');
@@ -150,6 +143,28 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
 }
 
 /**
+ * @private 
+ * @param {JSDataSet} dataset
+ * @return {JSDataSet}
+ * @properties={typeid:24,uuid:"2ABFE3B7-E03A-4A49-BBB4-F1DAD898493F"}
+ */
+function dataSetColumnConverter(dataset) {
+	var columns = dataset.getColumnNames();
+	for(var i = 0; i <= columns.length; i++) {
+		if(dataset.getColumnType(i + 1) == JSColumn.DATETIME) {
+			for(var j = 1; j <= dataset.getMaxRowIndex(); j++) {
+				if(dataset.getValue(j,i + 1)) {
+					dataset.setValue(j,i + 1, utils.dateFormat(dataset.getValue(j,i + 1),"yyyy-MM-dd HH:mm:ssZ","UTC"));
+				}
+			}
+		}
+	}
+	
+	return dataset;
+}
+
+/**
+ * @param {Boolean} [clearTablesNotInSeed] optional Clear all tables that are not in the dataseed zip file of the db server.
  * @public
  * @properties={typeid:24,uuid:"9E1D40BE-49BB-401D-85FF-B4E5FF920547"}
  */
@@ -274,7 +289,18 @@ function importCsvFile(dbName, tableName, file) {
 							//Convert types
 							switch (column.getType()) {
 								case JSColumn.DATETIME:
-									return !value ? 'NULL' : "'" + utils.dateFormat(new Date(value), 'yyyy-MM-dd HH:mm:ss') + "'"; 
+									if(value) {
+										if(new RegExp(/^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d/).test(value)) {
+											var newDate = utils.dateFormat(utils.parseDate(value,'yyyy-MM-dd HH:mm:ssZ','UTC'), 'yyyy-MM-dd HH:mm:ss');
+											if(newDate) {
+												return "'" + newDate + "'"; 
+											}
+										} else {
+											newDate = utils.dateFormat(new Date(value), 'yyyy-MM-dd HH:mm:ss');
+											return "'" + newDate + "'"; 
+										}
+									}
+									return 'NULL'; 
 								break;
 								case JSColumn.INTEGER:
 									var returnInt = ['', 'Infinity', 'NaN'].indexOf(value.toString()) != -1 ? 'NULL' : parseInt(value.toString());
