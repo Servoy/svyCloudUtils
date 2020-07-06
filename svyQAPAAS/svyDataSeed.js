@@ -16,11 +16,12 @@ function getWorkspacePath() {
 /**
  * @public
  * @param {String} [customPathToSVYQapaas]
+ * @param {Boolean} [returnDataseedFile] when true, dataseed will not be written to workspace but return as jsFile
  * @return {plugins.file.JSFile} zipped dataseed file
  * 
  * @properties={typeid:24,uuid:"B89674BA-49DE-4B32-829B-2181B69D44A5"}
  */
-function createDataSeedFiles(customPathToSVYQapaas) {
+function createDataSeedFiles(customPathToSVYQapaas, returnDataseedFile) {
 	var databases = [];
 	datasources['db']['allnames'].forEach(function(item) {
 		if(item != 'repository_server') {
@@ -28,7 +29,7 @@ function createDataSeedFiles(customPathToSVYQapaas) {
 		}
 	})
 	var selectedDB = plugins.dialogs.showSelectDialog('Generate dataseed', 'Select DB to generate dataseed from', databases);
-	return createDataSeedFile(selectedDB, customPathToSVYQapaas);
+	return createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFile);
 }
 
 /**
@@ -57,17 +58,24 @@ function removeExistingDataSeedFile(dataseedToRemove, customDataseedPath) {
  * @public
  * @param {String} selectedDB
  * @param {String} [customPathToSVYQapaas]
+ * @param {Boolean} [returnDataseedFile] when true, dataseed will not be written to workspace but return as jsFile
+ * @param {Array<{fieldName: String, value: String|Number}>} [additionalFilters] when given the query will add this to the where class (when field exists)
+ * 
  * @return {plugins.file.JSFile} zipped dataseed file
  *
  * @properties={typeid:24,uuid:"67C8AFB5-1DE1-43D0-BFA9-4AFBDFFB50E3"}
  */
-function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
+function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFile, additionalFilters) {
 	var zip = null;
 	if (!selectedDB) {
 		return zip;
 	}
 	
-	var workspacePath = application.isInDeveloper() ? getWorkspacePath() : scopes.svySystem.getSystemProperties().javaIoTmpdir;
+	if(returnDataseedFile == undefined) {
+		returnDataseedFile = application.isInDeveloper();
+	}
+	
+	var workspacePath = returnDataseedFile ? getWorkspacePath() : scopes.svySystem.getSystemProperties().javaIoTmpdir;
 	var tables = databaseManager.getTableNames(selectedDB);
 	var dbFolderPath = [workspacePath, 'svyQAPAAS', 'medias', 'dataseeds'].join(scopes.svyIO.getFileSeperator());
 	var tempFolder = [scopes.svySystem.getSystemProperties().javaIoTmpdir,'temp_export'].join(scopes.svyIO.getFileSeperator());
@@ -89,8 +97,8 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
 			application.output('Could not get foundset for table: ' + table, LOGGINGLEVEL.DEBUG);
 			application.output(e.message, LOGGINGLEVEL.WARNING);
 			if(true) {
-			continue;
-		}
+				continue;
+			}
 		}
 		
 		if (jsTable.isMetadataTable()) {
@@ -106,7 +114,15 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
 		for (var d = 0; d < dataProviderIds.length; d++) {
 			sql.result.add(sql.columns[dataProviderIds[d]]);
 		}
-	
+		
+		if(additionalFilters) {
+			for each(var filter in additionalFilters) {
+				if(jsTable.getColumn(filter.fieldName)) {
+					sql.where.add(sql.columns[filter.fieldName].eq(filter.value));
+				}
+			}
+		}
+		
 		var dataset = databaseManager.getDataSetByQuery(sql, false, -1);
 		var exportFile = plugins.file.convertToJSFile(tempFolder + scopes.svyIO.getFileSeperator() + jsTable.getSQLName() + '.csv');
 		var emptyDs = databaseManager.createEmptyDataSet();
@@ -171,63 +187,110 @@ function dataSetColumnConverter(dataset) {
 }
 
 /**
- * @param {Boolean} [clearTablesNotInSeed] optional Clear all tables that are not in the dataseed zip file of the db server.
- * @public
- * @properties={typeid:24,uuid:"9E1D40BE-49BB-401D-85FF-B4E5FF920547"}
+ * @constructor
+ * @param {JSMedia|plugins.file.JSFile} file
+ * @param {String} dbName
+ *
+ * @properties={typeid:24,uuid:"561F6E1D-C532-4955-8C88-06EDD46DE974"}
  */
-function runDataseedFromMedia(clearTablesNotInSeed) {
-	var file, tableName, dbName
+function DataseedFile(file, dbName) {
+	/**
+	 * @protected 
+	 * @type {JSMedia|plugins.file.JSFile}
+	 */
+	this.file = file
+	/**
+	 * @public  
+	 * @type {String}
+	 */
+	this.dbName = dbName;
+	
+	/**
+	 * @public  
+	 * @type {String}
+	 */
+	this.fileName = (file instanceof JSMedia ? file.getName().split('/').pop() : file.getName())
+
+	/** 
+	 * @public 
+	 * @type {Array<byte>}
+	 */
+	this.getBytes = function() {
+		if(file instanceof JSMedia) {
+			return file.bytes;
+		} else {
+			return file.getBytes();
+		}
+	}
+}
+
+/**
+ * 
+ * @public
+ * @return {Array<{DataseedFile}>}
+ *  
+ * @properties={typeid:24,uuid:"F973A092-AF92-4CCD-AD4D-1FCA15B162BD"}
+ */
+function getExistingDataseeds() {
+	var existingDataseeds = [];
 	var mediaList = solutionModel.getMediaList();
-	var seededTables = [];
 	for each (var media in mediaList) {
 		if (media && media.getName().match('dataseeds')) {
 			var splitString = media.getName().split('/');
 			if (media.getName().match('.zip')) {
-				dbName = splitString.pop().replace('.zip', '');
-				file = plugins.file.createTempFile('', '.zip');
-				plugins.file.writeFile(file, media.bytes);
-				var unzipedFolder = scopes.svyIO.unzip(file);
-				if (unzipedFolder && unzipedFolder.isDirectory()) {
-					var zipContent = plugins.file.getFolderContents(unzipedFolder);
-					zipContent.forEach(/**@param {plugins.file.JSFile} folderItem */ function(folderItem) {
-						if (folderItem.isFile() && folderItem.getName().match('.csv')) {
-							tableName = folderItem.getName().replace('.csv', '');
-							importCsvFile(dbName, tableName, folderItem);
-							seededTables.push(tableName);
-						}
-					})
-				}
+				existingDataseeds.push(new DataseedFile(media, splitString.pop().replace('.zip', '')));
+			}
+		}
+	}
+	return existingDataseeds;
+}
 
-				plugins.file.deleteFile(file);
-				plugins.file.deleteFolder(unzipedFolder, false);
-				
-				if(clearTablesNotInSeed == true) {
-					var tables = databaseManager.getTableNames(dbName);
-					for each(var table in tables) {
-						if(seededTables.indexOf(table) == -1) {
-							var jsTable = databaseManager.getTable(dbName, table);
-							if (jsTable.isMetadataTable()) {
-								application.output("Skipping clearing metadata table: " + jsTable.getDataSource(), LOGGINGLEVEL.DEBUG);
-							} else if(Packages.com.servoy.j2db.J2DBGlobals.getServiceProvider().getSolution().getI18nDataSource() == jsTable.getDataSource()) { 
-								application.output("Skipping clearing i18n table: " + jsTable.getDataSource(), LOGGINGLEVEL.DEBUG);
-							} else {
-							if (isMicrosoftDB(dbName)) {
-								executeQuery(dbName,jsTable,['delete from ' + jsTable.getQuotedSQLName() + ';']);
-							} else {
-								executeQuery(dbName,jsTable,['TRUNCATE TABLE ' + jsTable.getQuotedSQLName() + ' CASCADE;']);
-							}
+/**
+ * @param {Boolean} [clearTablesNotInSeed] optional Clear all tables that are not in the dataseed zip file of the db server.
+ * @param {plugins.file.JSFile} [dataseedFile] file to import instead of all files from media
+ * @param {String} [dbNameToImport] databaseName to import the given dataseedfile (only works when other param is set)
+ * @public
+ * @properties={typeid:24,uuid:"9E1D40BE-49BB-401D-85FF-B4E5FF920547"}
+ */
+function runDataseedFromMedia(clearTablesNotInSeed, dataseedFile, dbNameToImport) {
+	var file, tableName
+	var mediaList = getExistingDataseeds()||[new DataseedFile(dataseedFile,dbNameToImport)];
+	var seededTables = [];
+	for each (var importFile in mediaList) {
+			file = plugins.file.createTempFile('', '.zip');
+			plugins.file.writeFile(file, importFile.getBytes());
+			var unzipedFolder = scopes.svyIO.unzip(file);
+			if (unzipedFolder && unzipedFolder.isDirectory()) {
+				var zipContent = plugins.file.getFolderContents(unzipedFolder);
+				zipContent.forEach(/**@param {plugins.file.JSFile} folderItem */ function(folderItem) {
+					if (folderItem.isFile() && folderItem.getName().match('.csv')) {
+						tableName = folderItem.getName().replace('.csv', '');
+						importCsvFile(importFile.dbName, tableName, folderItem);
+						seededTables.push(tableName);
+					}
+				})
+			}
+
+			plugins.file.deleteFile(file);
+			plugins.file.deleteFolder(unzipedFolder, false);
+			
+			if(clearTablesNotInSeed == true) {
+				var tables = databaseManager.getTableNames(importFile.dbName);
+				for each(var table in tables) {
+					if(seededTables.indexOf(table) == -1) {
+						var jsTable = databaseManager.getTable(importFile.dbName, table);
+						if (jsTable.isMetadataTable()) {
+							application.output("Skipping clearing metadata table: " + jsTable.getDataSource(), LOGGINGLEVEL.DEBUG);
+						} else if(Packages.com.servoy.j2db.J2DBGlobals.getServiceProvider().getSolution().getI18nDataSource() == jsTable.getDataSource()) { 
+							application.output("Skipping clearing i18n table: " + jsTable.getDataSource(), LOGGINGLEVEL.DEBUG);
+						} else {
+						if (isMicrosoftDB(importFile.dbName)) {
+							executeQuery(importFile.dbName,jsTable,['delete from ' + jsTable.getQuotedSQLName() + ';']);
+						} else {
+							executeQuery(importFile.dbName,jsTable,['TRUNCATE TABLE ' + jsTable.getQuotedSQLName() + ' CASCADE;']);
 						}
 					}
 				}
-				}
-			} else if (media.getName().match('.csv')) {
-				//Old way we should stop supporting this.
-				tableName = splitString.pop().replace('.csv', '');
-				dbName = splitString.pop();
-				file = plugins.file.createTempFile('', '.csv');
-				plugins.file.writeFile(file, media.bytes)
-				importCsvFile(dbName, tableName, file);
-				file.deleteFile();
 			}
 		}
 	}
@@ -372,9 +435,6 @@ function importCsvFile(dbName, tableName, file) {
 
 	application.output('Import of file: ' + dbName + ' / ' + tableName + ' -Started-', LOGGINGLEVEL.INFO);
 	
-	if(tableName == 'employees') {
-		application.output('test')
-	}
 	var csvObj = scopes.svyDataUtils.parseCSV(plugins.file.readTXTFile(file,'UTF-8'), {delimiter: ',', firstRowHasColumnNames: true, textQualifier: '"'});
 	importData(csvObj.columnNames)
 	csvObj.data.forEach(function(row) {
