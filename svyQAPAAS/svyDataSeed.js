@@ -199,6 +199,11 @@ function runDataseedFromMedia(clearTablesNotInSeed) {
 					for each(var table in tables) {
 						if(seededTables.indexOf(table) == -1) {
 							var jsTable = databaseManager.getTable(dbName, table);
+							if (jsTable.isMetadataTable()) {
+								application.output("Skipping clearing metadata table: " + jsTable.getDataSource(), LOGGINGLEVEL.DEBUG);
+							} else if(Packages.com.servoy.j2db.J2DBGlobals.getServiceProvider().getSolution().getI18nDataSource() == jsTable.getDataSource()) { 
+								application.output("Skipping clearing i18n table: " + jsTable.getDataSource(), LOGGINGLEVEL.DEBUG);
+							} else {
 							if (isMicrosoftDB(dbName)) {
 								executeQuery(dbName,jsTable,['delete from ' + jsTable.getQuotedSQLName() + ';']);
 							} else {
@@ -206,6 +211,7 @@ function runDataseedFromMedia(clearTablesNotInSeed) {
 							}
 						}
 					}
+				}
 				}
 			} else if (media.getName().match('.csv')) {
 				//Old way we should stop supporting this.
