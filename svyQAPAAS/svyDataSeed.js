@@ -38,7 +38,7 @@ function createDataSeedFiles(customPathToSVYQapaas) {
  * @properties={typeid:24,uuid:"EA5C78EC-8BD9-47AB-B45C-AF24BBC470B7"}
  */
 function removeExistingDataSeedFile(dataseedToRemove, customDataseedPath) {
-	var workspacePath = application.isInDeveloper() ? getWorkspacePath() : scopes.svyIO.getTempDirectory();
+	var workspacePath = application.isInDeveloper() ? getWorkspacePath() : scopes.svySystem.getSystemProperties().javaIoTmpdir;
 	var dbFolderPathArray = [workspacePath, 'svyQAPAAS', 'medias', 'dataseeds'];
 	if(customDataseedPath) {
 		dbFolderPathArray = [customDataseedPath,'medias', 'dataseeds'];
@@ -67,13 +67,13 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas) {
 		return zip;
 	}
 	
-	var workspacePath = application.isInDeveloper() ? getWorkspacePath() : scopes.svyIO.getTempDirectory();
+	var workspacePath = application.isInDeveloper() ? getWorkspacePath() : scopes.svySystem.getSystemProperties().javaIoTmpdir;
 	var tables = databaseManager.getTableNames(selectedDB);
 	var dbFolderPath = [workspacePath, 'svyQAPAAS', 'medias', 'dataseeds'].join(scopes.svyIO.getFileSeperator());
-	var tempFolder = [scopes.svyIO.getTempDirectory(),'temp_export'].join(scopes.svyIO.getFileSeperator());
+	var tempFolder = [scopes.svySystem.getSystemProperties().javaIoTmpdir,'temp_export'].join(scopes.svyIO.getFileSeperator());
 	if (customPathToSVYQapaas) {
 		dbFolderPath = [customPathToSVYQapaas, 'medias', 'dataseeds'].join(scopes.svyIO.getFileSeperator());
-		tempFolder = [scopes.svyIO.getTempDirectory(), 'temp_export'].join(scopes.svyIO.getFileSeperator());
+		tempFolder = [scopes.svySystem.getSystemProperties().javaIoTmpdir, 'temp_export'].join(scopes.svyIO.getFileSeperator());
 	}
 
 	removeExistingDataSeedFile(selectedDB, customPathToSVYQapaas);
