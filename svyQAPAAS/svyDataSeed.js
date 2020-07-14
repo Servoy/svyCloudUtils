@@ -55,6 +55,85 @@ function removeExistingDataSeedFile(dataseedToRemove, customDataseedPath) {
 }
 
 /**
+ * @private 
+ * @param {String} dbName
+ * @param {JSTable} jsTable
+ * @param {Array<{fieldName: String, value: String|Number}>} [additionalFilters]
+ * @return {{query: String, cntQuery: QBSelect, args: Array<*>}}
+ * @properties={typeid:24,uuid:"F6B909B6-76E3-48A2-9A57-9728EC843BB4"}
+ */
+function buildSelectSQL(dbName, jsTable, additionalFilters) {
+	var dataProviderIds = jsTable.getColumnNames();
+	var sql = databaseManager.createSelect(jsTable.getDataSource());
+	for (var d = 0; d < dataProviderIds.length; d++) {
+		sql.result.add(sql.columns[dataProviderIds[d]]);
+	}
+	
+	//Add sort to have a better offset
+	//TODO: IS THIS NEEDED??
+	//sql.sort.add(sql.columns[jsTable.getRowIdentifierColumnNames()[0]].asc);
+	
+	var cntSql = databaseManager.createSelect(jsTable.getDataSource());
+	cntSql.result.clear();
+	cntSql.result.add(cntSql.getColumn(jsTable.getRowIdentifierColumnNames()[0]).count);
+	
+	if(additionalFilters) {
+		for each(var filter in additionalFilters) {
+			if(jsTable.getColumn(filter.fieldName)) {
+				sql.where.add(sql.columns[filter.fieldName].eq(filter.value)); //Add to the data query
+				cntSql.where.add(cntSql.columns[filter.fieldName].eq(filter.value)); //Add to countQuery
+			}
+		}
+	}
+	
+	//Parse to string & args array
+	var dbSQL = databaseManager.getSQL(sql,false);
+	var queryArgs = databaseManager.getSQLParameters(sql, false)||[];
+	
+	
+	if(isPostgresDB(dbName)) {
+		for (d = 0; d < dataProviderIds.length; d++) {
+			//When timestamp make it return UTC so it will be imported correctly
+			if(jsTable.getColumn(dataProviderIds[d]).getType() == JSColumn.DATETIME) {
+				dbSQL = dbSQL.replace((jsTable.getSQLName() + '.' + dataProviderIds[d]),"timezone('UTC',"+jsTable.getSQLName() + "." + dataProviderIds[d]+ ")")
+			}
+		}
+		dbSQL += ' LIMIT ? OFFSET ?';
+	} else if(isMicrosoftDB(dbName)) {
+		for (d = 0; d < dataProviderIds.length; d++) {
+			//When timestamp make it return UTC so it will be imported correctly
+			if(jsTable.getColumn(dataProviderIds[d]).getType() == JSColumn.DATETIME) {
+				dbSQL = dbSQL.replace((jsTable.getSQLName() + '.' + dataProviderIds[d]),jsTable.getSQLName() + "." + dataProviderIds[d]+ " AT TIME ZONE 'UTC'")
+			}
+		}
+		
+		dbSQL += ' OFFSET ? ROWS FETCH NEXT ? ROWS ONLY;';
+	} else {
+		return null;
+	}
+	
+	return {query: dbSQL, cntQuery: cntSql, args: queryArgs};
+}
+
+
+/**
+ * @private 
+ * @param {String} dbName
+ * @param {Array<*>} args
+ * @param {Number} offset
+ *
+ * @properties={typeid:24,uuid:"1072416E-CDA0-419A-A8EB-BB14A4A939F4"}
+ */
+function addOffsetArgs(dbName, args, offset) {
+	if(isPostgresDB(dbName)) {
+		return args.concat([50000, offset])
+	} else if(isMicrosoftDB(dbName)) {
+		return args.concat([offset, 50000]);
+	} else {
+		return null;
+	}
+}
+/**
  * @public
  * @param {String} selectedDB
  * @param {String} [customPathToSVYQapaas]
@@ -93,6 +172,7 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFil
 		try {
 			var fs = databaseManager.getFoundSet(selectedDB, table);
 			var jsTable = databaseManager.getTable(fs);
+			fs.clear();
 		} catch (e) {
 			application.output('Could not get foundset for table: ' + table, LOGGINGLEVEL.DEBUG);
 			application.output(e.message, LOGGINGLEVEL.WARNING);
@@ -109,51 +189,27 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFil
 			continue
 		}
 		
-		var dataProviderIds = jsTable.getColumnNames();
-		var sql = databaseManager.createSelect(fs.getDataSource());
-		for (var d = 0; d < dataProviderIds.length; d++) {
-			sql.result.add(sql.columns[dataProviderIds[d]]);
-		}
-		
-		if(additionalFilters) {
-			for each(var filter in additionalFilters) {
-				if(jsTable.getColumn(filter.fieldName)) {
-					sql.where.add(sql.columns[filter.fieldName].eq(filter.value));
-				}
-			}
-		}
-		
-		var dataset = databaseManager.getDataSetByQuery(sql, false, -1);
+		var queryObj = buildSelectSQL(selectedDB, jsTable, additionalFilters);
+		var tableCount = databaseManager.getDataSetByQuery(queryObj.cntQuery,1).getValue(1,1);
+		var offset = 0;
 		var exportFile = plugins.file.convertToJSFile(tempFolder + scopes.svyIO.getFileSeperator() + jsTable.getSQLName() + '.csv');
-		var emptyDs = databaseManager.createEmptyDataSet();
-		var columns = dataset.getColumnNames();
-		for(var c = 0; c <= columns.length; c++) {
-			emptyDs.addColumn(columns[c],c + 1,dataset.getColumnType(c + 1));
-		}
 		
-		var rows = 0;
-		//Need to split it this way, will get error when doing a convert of 1 million+ records
-		for (var i = 1; i <= dataset.getMaxRowIndex(); i++) {
-			emptyDs.addRow(dataset.getRowAsArray(i));
-			if (emptyDs.getMaxRowIndex() == 5000) {
-				rows += emptyDs.getMaxRowIndex();
-				if(plugins.file.getFileSize(exportFile) == 0) {
-					plugins.file.writeTXTFile(exportFile, dataSetColumnConverter(emptyDs).getAsText(',','\r\n','"',true), 'UTF-8');
-				} else {
-					plugins.file.appendToTXTFile(exportFile, dataSetColumnConverter(emptyDs).getAsText(',','\r\n','"',false), 'UTF-8');
-				}
-				emptyDs = databaseManager.createEmptyDataSet(0,dataset.getColumnNames());
+		application.output('Export of table: ' + selectedDB + ' / ' + table + ' (rows: ' + tableCount + ') -start-');
+		do {
+			var queryTime = new Date();
+			var dataset = databaseManager.getDataSetByQuery(selectedDB,queryObj.query,addOffsetArgs(selectedDB,queryObj.args,offset),-1);
+			offset += dataset.getMaxRowIndex();
+			application.output('Export of table: ' + selectedDB + ' / ' + table + ' (getting/parsing offset: ' + offset + ', querytime: ' + (new Date().getTime() - queryTime.getTime()) + 'ms ) -running-', LOGGINGLEVEL.DEBUG);
+			var writeTime = new Date();
+			if(plugins.file.getFileSize(exportFile) == 0) {
+				plugins.file.writeTXTFile(exportFile, dataset.getAsText(',','\r\n','"',true), 'UTF-8');
+			} else {
+				plugins.file.appendToTXTFile(exportFile, dataset.getAsText(',','\r\n','"',false), 'UTF-8');
 			}
-		}
-		
-		rows += emptyDs.getMaxRowIndex();
-		if(plugins.file.getFileSize(exportFile) == 0) {
-			plugins.file.writeTXTFile(exportFile, dataSetColumnConverter(emptyDs).getAsText(',','\r\n','"',true), 'UTF-8');
-		} else {
-			plugins.file.appendToTXTFile(exportFile, dataSetColumnConverter(emptyDs).getAsText(',','\r\n','"',false), 'UTF-8');
-		}
-
-		application.output('Export of table: ' + selectedDB + ' / ' + table + ' (rows: ' + rows + ') -done-');
+//			application.sleep(200)
+			application.output('total write time: ' + (new Date().getTime() - writeTime.getTime()))
+		} while (offset < tableCount);
+		application.output('Export of table: ' + selectedDB + ' / ' + table + ' (rows: ' + offset + ') -done-');
 	}
 
 	if(plugins.file.convertToJSFile(tempFolder).listFiles().length > 0) {
@@ -163,27 +219,6 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFil
 
 	application.output('Export of database: ' + selectedDB + ' -done-');
 	return zip;
-}
-
-/**
- * @private 
- * @param {JSDataSet} dataset
- * @return {JSDataSet}
- * @properties={typeid:24,uuid:"2ABFE3B7-E03A-4A49-BBB4-F1DAD898493F"}
- */
-function dataSetColumnConverter(dataset) {
-	var columns = dataset.getColumnNames();
-	for(var i = 0; i <= columns.length; i++) {
-		if(dataset.getColumnType(i + 1) == JSColumn.DATETIME) {
-			for(var j = 1; j <= dataset.getMaxRowIndex(); j++) {
-				if(dataset.getValue(j,i + 1)) {
-					dataset.setValue(j,i + 1, utils.dateFormat(dataset.getValue(j,i + 1),"yyyy-MM-dd HH:mm:ssZ","UTC"));
-				}
-			}
-		}
-	}
-	
-	return dataset;
 }
 
 /**
@@ -366,8 +401,8 @@ function importCsvFile(dbName, tableName, file) {
 							switch (column.getType()) {
 								case JSColumn.DATETIME:
 									if(value) {
-										if(new RegExp(/^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d/).test(value)) {
-											var newDate = utils.dateFormat(utils.parseDate(value,'yyyy-MM-dd HH:mm:ssZ','UTC'), 'yyyy-MM-dd HH:mm:ss');
+										if(new RegExp(/^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d/).test(value)) {
+											var newDate = utils.dateFormat(utils.parseDate(value.replace('T',' '),'yyyy-MM-dd HH:mm:ssZ','UTC'), 'yyyy-MM-dd HH:mm:ss');
 											if(newDate) {
 												return "'" + newDate + "'"; 
 											}
