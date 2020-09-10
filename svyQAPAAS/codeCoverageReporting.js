@@ -17,6 +17,8 @@ var reportPath = '@reportPath@'; //gets dynamically replaced with the actual rep
 /**
  * Variable for recording all coverage data
  * @public
+ * @type {*}
+ * 
  * @properties={typeid:35,uuid:"428BFC5E-4357-4D85-93EF-8B78BCE647D8",variableType:-4}
  */
 var __coverage__ = (Function('return this'))();
