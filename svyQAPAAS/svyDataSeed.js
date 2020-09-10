@@ -59,19 +59,27 @@ function removeExistingDataSeedFile(dataseedToRemove, customDataseedPath) {
  * @param {String} dbName
  * @param {JSTable} jsTable
  * @param {Array<{fieldName: String, value: String|Number}>} [additionalFilters]
- * @return {{query: String, cntQuery: QBSelect, args: Array<*>}}
+ * @return {{query: String, cntQuery: QBSelect, args: Array<*>, largeDataFields: Boolean}}
  * @properties={typeid:24,uuid:"F6B909B6-76E3-48A2-9A57-9728EC843BB4"}
  */
 function buildSelectSQL(dbName, jsTable, additionalFilters) {
+	var largeTxtFields = false;
 	var dataProviderIds = jsTable.getColumnNames();
 	var sql = databaseManager.createSelect(jsTable.getDataSource());
 	for (var d = 0; d < dataProviderIds.length; d++) {
-		sql.result.add(sql.columns[dataProviderIds[d]]);
+		if(jsTable.getColumn(dataProviderIds[d]).getType() != JSColumn.MEDIA || isPostgresDB(dbName)) {
+			sql.result.add(sql.columns[dataProviderIds[d]]);
+		} else if(jsTable.getColumn(dataProviderIds[d]).getType() == JSColumn.MEDIA && isMicrosoftDB(dbName)) {
+			application.output("Found media column, media conversion isn't supported currently for MSSQL Server. Column will be skipped", LOGGINGLEVEL.WARNING)
+		}
+		
+		if(jsTable.getColumn(dataProviderIds[d]).getLength() > 5000 || jsTable.getColumn(dataProviderIds[d]).getType() == JSColumn.MEDIA) {
+			largeTxtFields = true;
+		}
 	}
 	
-	//Add sort to have a better offset
-	//TODO: IS THIS NEEDED??
-	//sql.sort.add(sql.columns[jsTable.getRowIdentifierColumnNames()[0]].asc);
+	//Add sort to have a better offset && not have duplicates because of offset
+	sql.sort.add(sql.columns[jsTable.getRowIdentifierColumnNames()[0]].asc);
 	
 	var cntSql = databaseManager.createSelect(jsTable.getDataSource());
 	cntSql.result.clear();
@@ -91,11 +99,17 @@ function buildSelectSQL(dbName, jsTable, additionalFilters) {
 	var queryArgs = databaseManager.getSQLParameters(sql, false)||[];
 	
 	
+	var fieldsToReplace = [];
+	//Replace of dateTime with timezone based in sql needs to be done after, can not be done in qbselect
 	if(isPostgresDB(dbName)) {
 		for (d = 0; d < dataProviderIds.length; d++) {
 			//When timestamp make it return UTC so it will be imported correctly
 			if(jsTable.getColumn(dataProviderIds[d]).getType() == JSColumn.DATETIME) {
-				dbSQL = dbSQL.replace((jsTable.getSQLName() + '.' + dataProviderIds[d]),"timezone('UTC',"+jsTable.getSQLName() + "." + dataProviderIds[d]+ ")")
+				fieldsToReplace.push("timezone('UTC',"+jsTable.getSQLName() + "." + dataProviderIds[d]+ ") AS " + dataProviderIds[d]);
+				dbSQL = dbSQL.replace((jsTable.getSQLName() + '.' + dataProviderIds[d]),'%%' + (fieldsToReplace.length - 1) + '%%')
+			} else if(jsTable.getColumn(dataProviderIds[d]).getType() == JSColumn.MEDIA) {
+				fieldsToReplace.push("encode("+jsTable.getSQLName() + "." + dataProviderIds[d]+ ", 'base64') AS " + dataProviderIds[d]);
+				dbSQL = dbSQL.replace((jsTable.getSQLName() + '.' + dataProviderIds[d]),'%%' + (fieldsToReplace.length - 1) + '%%')
 			}
 		}
 		dbSQL += ' LIMIT ? OFFSET ?';
@@ -103,7 +117,8 @@ function buildSelectSQL(dbName, jsTable, additionalFilters) {
 		for (d = 0; d < dataProviderIds.length; d++) {
 			//When timestamp make it return UTC so it will be imported correctly
 			if(jsTable.getColumn(dataProviderIds[d]).getType() == JSColumn.DATETIME) {
-				dbSQL = dbSQL.replace((jsTable.getSQLName() + '.' + dataProviderIds[d]),jsTable.getSQLName() + "." + dataProviderIds[d]+ " AT TIME ZONE 'UTC'")
+				fieldsToReplace.push(jsTable.getSQLName() + "." + dataProviderIds[d]+ " AT TIME ZONE 'UTC' AS " + dataProviderIds[d]);
+				dbSQL = dbSQL.replace((jsTable.getSQLName() + '.' + dataProviderIds[d]),'%%' + (fieldsToReplace.length - 1 )+ '%%')
 			}
 		}
 		
@@ -112,7 +127,12 @@ function buildSelectSQL(dbName, jsTable, additionalFilters) {
 		return null;
 	}
 	
-	return {query: dbSQL, cntQuery: cntSql, args: queryArgs};
+	//Doing replace at the and / in 2 steps to fix issue with fields that match 2 times because of naming.
+	fieldsToReplace.forEach(function(item, index) {
+		dbSQL = dbSQL.replace('%%' + index + '%%',item);
+	})
+	
+	return {query: dbSQL, cntQuery: cntSql, args: queryArgs, largeDataFields: largeTxtFields};
 }
 
 
@@ -121,14 +141,19 @@ function buildSelectSQL(dbName, jsTable, additionalFilters) {
  * @param {String} dbName
  * @param {Array<*>} args
  * @param {Number} offset
+ * @param {Boolean} largeDataField
  *
  * @properties={typeid:24,uuid:"1072416E-CDA0-419A-A8EB-BB14A4A939F4"}
  */
-function addOffsetArgs(dbName, args, offset) {
+function addOffsetArgs(dbName, args, offset, largeDataField) {
+	var limitValue = 20000;
+	if(largeDataField) {
+		limitValue = 100
+	}
 	if(isPostgresDB(dbName)) {
-		return args.concat([50000, offset])
+		return args.concat([limitValue, offset])
 	} else if(isMicrosoftDB(dbName)) {
-		return args.concat([offset, 50000]);
+		return args.concat([offset, limitValue]);
 	} else {
 		return null;
 	}
@@ -193,22 +218,19 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFil
 		var tableCount = databaseManager.getDataSetByQuery(queryObj.cntQuery,1).getValue(1,1);
 		var offset = 0;
 		var exportFile = plugins.file.convertToJSFile(tempFolder + scopes.svyIO.getFileSeperator() + jsTable.getSQLName() + '.csv');
-		
+		var fileWriter = new scopes.svyIO.BufferedWriter(exportFile,true)
 		application.output('Export of table: ' + selectedDB + ' / ' + table + ' (rows: ' + tableCount + ') -start-');
 		do {
 			var queryTime = new Date();
-			var dataset = databaseManager.getDataSetByQuery(selectedDB,queryObj.query,addOffsetArgs(selectedDB,queryObj.args,offset),-1);
+			var dataset = databaseManager.getDataSetByQuery(selectedDB,queryObj.query,addOffsetArgs(selectedDB,queryObj.args,offset, queryObj.largeDataFields),-1);
 			offset += dataset.getMaxRowIndex();
 			application.output('Export of table: ' + selectedDB + ' / ' + table + ' (getting/parsing offset: ' + offset + ', querytime: ' + (new Date().getTime() - queryTime.getTime()) + 'ms ) -running-', LOGGINGLEVEL.DEBUG);
 			var writeTime = new Date();
-			if(plugins.file.getFileSize(exportFile) == 0) {
-				plugins.file.writeTXTFile(exportFile, dataset.getAsText(',','\r\n','"',true), 'UTF-8');
-			} else {
-				plugins.file.appendToTXTFile(exportFile, dataset.getAsText(',','\r\n','"',false), 'UTF-8');
-			}
-//			application.sleep(200)
-			application.output('total write time: ' + (new Date().getTime() - writeTime.getTime()))
-		} while (offset < tableCount);
+			fileWriter.write(dataset.getAsText(',','\r\n','"',(offset == 0 ? true : false)));
+			dataset = null;
+			application.output('total write time: ' + (new Date().getTime() - writeTime.getTime()), LOGGINGLEVEL.DEBUG)
+		} while (offset < tableCount && offset < 100000); //TODO: LIMIT SHOULD BE REMOVED!!
+		fileWriter.close();
 		application.output('Export of table: ' + selectedDB + ' / ' + table + ' (rows: ' + offset + ') -done-');
 	}
 
@@ -239,6 +261,13 @@ function DataseedFile(file, dbName) {
 	 * @type {String}
 	 */
 	this.dbName = dbName;
+	
+	/**
+	 * @public  
+	 * @type {plugins.file.JSFile}
+	 */
+	this.remoteFile = (file instanceof plugins.file.JSFile ? file : null);
+	
 	
 	/**
 	 * @public  
@@ -289,11 +318,15 @@ function getExistingDataseeds() {
  */
 function runDataseedFromMedia(clearTablesNotInSeed, dataseedFile, dbNameToImport) {
 	var file, tableName
-	var mediaList = getExistingDataseeds()||[new DataseedFile(dataseedFile,dbNameToImport)];
+	var mediaList = (dataseedFile  && dbNameToImport ? [new DataseedFile(dataseedFile,dbNameToImport)] :  getExistingDataseeds());
 	var seededTables = [];
 	for each (var importFile in mediaList) {
 			file = plugins.file.createTempFile('', '.zip');
-			plugins.file.writeFile(file, importFile.getBytes());
+			if(importFile.remoteFile) {
+				plugins.file.copyFile(importFile.remoteFile, file);
+			} else {
+				plugins.file.writeFile(file, importFile.getBytes());
+			}
 			var unzipedFolder = scopes.svyIO.unzip(file);
 			if (unzipedFolder && unzipedFolder.isDirectory()) {
 				var zipContent = plugins.file.getFolderContents(unzipedFolder);
@@ -350,8 +383,8 @@ function importCsvFile(dbName, tableName, file) {
 	var columnDiffs = [];
 	var table = databaseManager.getTable(dbName, tableName);
 
-	/**@param {Array} lineToImport */
-	function importData(lineToImport) {
+	/**@param {{columnNames: Array, data: Array, errors: Array, meta: {delimiter: String, linebreak: String, aborted: Boolean, truncated: Boolean, cursor: Number}}} csvData */
+	function importData(csvData) {
 		if (table) {
 			//Assume it is the first line, so do init calles;
 			if (header.length == 0) {
@@ -361,7 +394,7 @@ function importCsvFile(dbName, tableName, file) {
 					executeQuery(dbName,table,['TRUNCATE TABLE ' + table.getQuotedSQLName() + ' CASCADE;']);
 				}
 
-				header = lineToImport;
+				header = csvData.columnNames;
 				fullHeader = header;
 
 				// verify the header columns
@@ -376,91 +409,94 @@ function importCsvFile(dbName, tableName, file) {
 				})
 
 			} else {
-				if (lineToImport) {
-					counter++;
-					if (lineToImport.length && lineToImport[0] != undefined) {
-						
-						lineToImport = lineToImport.filter(function(item,index) {
-							for(var i in columnDiffs) {
-								if(fullHeader.indexOf(columnDiffs[i]) == index) {
-									return false;
+				csvData.data.forEach(function(rowData) {
+					if (rowData) {
+						counter++;
+						if (rowData != undefined) {
+							rowData = rowData.filter(function(item,index) {
+								for(var i in columnDiffs) {
+									if(fullHeader.indexOf(columnDiffs[i]) == index) {
+										return false;
+									}
 								}
-							}
-							return true;
-						})
-						
-						var values = lineToImport.map(
-						/**
-						 * @param {*} value
-						 * @param {Number} index
-						 * @return {String|Number} 
-						 */
-						function(value, index) {
-							var column = table.getColumn(header[index]);
-							//Convert types
-							switch (column.getType()) {
-								case JSColumn.DATETIME:
-									if(value) {
-										if(new RegExp(/^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d/).test(value)) {
-											var newDate = utils.dateFormat(utils.parseDate(value.replace('T',' '),'yyyy-MM-dd HH:mm:ssZ','UTC'), 'yyyy-MM-dd HH:mm:ss');
-											if(newDate) {
+								return true;
+							})
+							
+							var values = rowData.map(
+							/**
+							 * @param {*} value
+							 * @param {Number} index
+							 * @return {String|Number} 
+							 */
+							function(value, index) {
+								var column = table.getColumn(header[index]);
+								//Convert types
+								switch (column.getType()) {
+									case JSColumn.DATETIME:
+										if(value) {
+											if(new RegExp(/^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d/).test(value)) {
+												var newDate = utils.dateFormat(utils.parseDate(value.replace('T',' '),'yyyy-MM-dd HH:mm:ssZ','UTC'), 'yyyy-MM-dd HH:mm:ss');
+												if(newDate) {
+													return "'" + newDate + "'"; 
+												}
+											} else {
+												newDate = utils.dateFormat(new Date(value), 'yyyy-MM-dd HH:mm:ss');
 												return "'" + newDate + "'"; 
 											}
+										}
+										return 'NULL'; 
+									break;
+									case JSColumn.INTEGER:
+										var returnInt = ['', 'Infinity', 'NaN'].indexOf(value.toString()) != -1 ? 'NULL' : parseInt(value.toString());
+										if (returnInt == NaN) {
+											returnInt = 'NULL';
+										} else if (returnInt != 'NULL') {
+											// FIX for boolean in postgres
+											returnInt = "'" +returnInt + "'";
+										}
+										return returnInt;
+									break;
+									case JSColumn.NUMBER:
+										var returnNum = ['', 'Infinity', 'NaN'].indexOf(value.toString()) != -1 ? 'NULL' : parseFloat(value.toString());
+										if(returnNum == NaN) {
+											returnNum = 'NULL';
+										}
+										return returnNum;
+									break;
+									case JSColumn.MEDIA:
+										if(value) {
+											return "decode('" + value + "', 'base64')";
 										} else {
-											newDate = utils.dateFormat(new Date(value), 'yyyy-MM-dd HH:mm:ss');
-											return "'" + newDate + "'"; 
+											return 'NULL';
 										}
-									}
-									return 'NULL'; 
-								break;
-								case JSColumn.INTEGER:
-									var returnInt = ['', 'Infinity', 'NaN'].indexOf(value.toString()) != -1 ? 'NULL' : parseInt(value.toString());
-									if (returnInt == NaN) {
-										returnInt = 'NULL';
-									} else if (returnInt != 'NULL') {
-										// FIX for boolean in postgres
-										returnInt = "'" +returnInt + "'";
-									}
-									return returnInt;
-								break;
-								case JSColumn.NUMBER:
-									var returnNum = ['', 'Infinity', 'NaN'].indexOf(value.toString()) != -1 ? 'NULL' : parseFloat(value.toString());
-									if(returnNum == NaN) {
-										returnNum = 'NULL';
-									}
-									return returnNum;
-								break;
-								case JSColumn.MEDIA:
-									return 'NULL';
-								break;
-								default:
-									if(!value && column.getAllowNull()){
-										return 'NULL';
-									} else {
-										if(value && value.length > column.getLength()) {
-											value = value.substr(0,column.getLength())
+									break;
+									default:
+										if(!value && column.getAllowNull()){
+											return 'NULL';
+										} else {
+											if(value && value.length > column.getLength()) {
+												value = value.substr(0,column.getLength())
+											}
+											return "'" + utils.stringReplace(value||"", "'", "''") + "'";
 										}
-										return "'" + utils.stringReplace(value||"", "'", "''") + "'";
-									}
-								break;
+									break;
+								}
+							});
+
+							var query = 'INSERT INTO ' + table.getQuotedSQLName() + ' ("' + header.join('", "') + '") VALUES (' + values.join(', ') + ');'
+
+							queryToExec.push(query);
+							if (counter % 500 == 0) {
+								if(!executeQuery(dbName,table,queryToExec)) {
+									application.output('FAILED TO INSERT insert sql ' + counter + ' of ' + lineCount, LOGGINGLEVEL.ERROR);
+								}
+
+								queryToExec = [];
+								application.output('Executed insert sql ' + counter + ' of ' + lineCount, LOGGINGLEVEL.DEBUG);
 							}
-						});
-
-						var query = 'INSERT INTO ' + table.getQuotedSQLName() + ' ("' + header.join('", "') + '") VALUES (' + values.join(', ') + ');'
-
-						queryToExec.push(query);
-						if (counter % 500 == 0) {
-							if(!executeQuery(dbName,table,queryToExec)) {
-								application.output('FAILED TO INSERT insert sql ' + counter + ' of ' + lineCount, LOGGINGLEVEL.ERROR);
-							}
-
-							queryToExec = [];
-							application.output('Executed insert sql ' + counter + ' of ' + lineCount, LOGGINGLEVEL.DEBUG);
 						}
 					}
-				} else {
-					application.output('Import of file: ' + dbName + ' / ' + tableName + ' -skipped / empty-', LOGGINGLEVEL.INFO);
-				}
+				})
 			}
 		} else {
 			application.output('Import of file: ' + dbName + ' / ' + tableName + ' -skipped / table not found on server!!-', LOGGINGLEVEL.INFO);
@@ -470,11 +506,11 @@ function importCsvFile(dbName, tableName, file) {
 
 	application.output('Import of file: ' + dbName + ' / ' + tableName + ' -Started-', LOGGINGLEVEL.INFO);
 	
-	var csvObj = scopes.svyDataUtils.parseCSV(plugins.file.readTXTFile(file,'UTF-8'), {delimiter: ',', firstRowHasColumnNames: true, textQualifier: '"'});
-	importData(csvObj.columnNames)
-	csvObj.data.forEach(function(row) {
-		importData(row);
-	});
+	scopes.svyDataUtils.parseCSV(plugins.file.readTXTFile(file,'UTF-8'), {delimiter: ',', firstRowHasColumnNames: true, textQualifier: '"'}, importData);
+//	importData(csvObj.columnNames)
+//	csvObj.data.forEach(function(row) {
+//		importData(row);
+//	});
 	
 	if (queryToExec.length != 0) {
 		if(!executeQuery(dbName,table,queryToExec)) {
@@ -512,11 +548,9 @@ function executeQuery(dbName, table, queryToExec) {
 			preInsertSQL += 'SET IDENTITY_INSERT ' + table.getQuotedSQLName() + ' ON;';
 			postInsertSQL = 'SET IDENTITY_INSERT ' + table.getQuotedSQLName() + ' OFF;' + postInsertSQL;
 		}
-	}
-	
-	if(isPostgresDB(dbName)) {
+	} else if(isPostgresDB(dbName)) {
 		if(table.getColumn(table.getRowIdentifierColumnNames()[0]).getSequenceType() == JSColumn.DATABASE_SEQUENCE && table.getColumn(table.getRowIdentifierColumnNames()[0]).getType() == JSColumn.INTEGER) {
-			queryToExec.push("SELECT setval(pg_get_serial_sequence('" + table.getSQLName() + "', '"+ table.getRowIdentifierColumnNames()[0]+ "'), COALESCE(CAST(max(" + table.getRowIdentifierColumnNames()[0]+ ") AS INT), 1)) FROM " + table.getQuotedSQLName() + ";");
+			queryToExec.push("SELECT setval(pg_get_serial_sequence('" + table.getSQLName() + "', '"+ table.getColumn(table.getRowIdentifierColumnNames()[0]).getQuotedSQLName()+ "'), COALESCE(CAST(max(" + table.getColumn(table.getRowIdentifierColumnNames()[0]).getQuotedSQLName()+ ") AS INT), 1)) FROM " + table.getQuotedSQLName() + ";");
 		}
 	}
 
