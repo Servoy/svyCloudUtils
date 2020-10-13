@@ -223,12 +223,11 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFil
 		do {
 			var queryTime = new Date();
 			var dataset = databaseManager.getDataSetByQuery(selectedDB,queryObj.query,addOffsetArgs(selectedDB,queryObj.args,offset, queryObj.largeDataFields),-1);
+			var csvHeader = (offset == 0 ? true : false);
 			offset += dataset.getMaxRowIndex();
 			application.output('Export of table: ' + selectedDB + ' / ' + table + ' (getting/parsing offset: ' + offset + ', querytime: ' + (new Date().getTime() - queryTime.getTime()) + 'ms ) -running-', LOGGINGLEVEL.DEBUG);
-			var writeTime = new Date();
-			fileWriter.write(dataset.getAsText(',','\r\n','"',(offset == 0 ? true : false)));
+			fileWriter.write(dataset.getAsText(',','\r\n','"',csvHeader));
 			dataset = null;
-			application.output('total write time: ' + (new Date().getTime() - writeTime.getTime()), LOGGINGLEVEL.DEBUG)
 		} while (offset < tableCount && offset < 100000); //TODO: LIMIT SHOULD BE REMOVED!!
 		fileWriter.close();
 		application.output('Export of table: ' + selectedDB + ' / ' + table + ' (rows: ' + offset + ') -done-');
