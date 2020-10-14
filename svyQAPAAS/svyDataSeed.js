@@ -407,96 +407,96 @@ function importCsvFile(dbName, tableName, file) {
 					return (columnDiffs.indexOf(item) === -1)
 				})
 
-			} else {
-				csvData.data.forEach(function(rowData) {
-					if (rowData) {
-						counter++;
-						if (rowData != undefined) {
-							rowData = rowData.filter(function(item,index) {
-								for(var i in columnDiffs) {
-									if(fullHeader.indexOf(columnDiffs[i]) == index) {
-										return false;
-									}
+			} 
+			
+			csvData.data.forEach(function(rowData) {
+				if (rowData) {
+					counter++;
+					if (rowData != undefined) {
+						rowData = rowData.filter(function(item,index) {
+							for(var i in columnDiffs) {
+								if(fullHeader.indexOf(columnDiffs[i]) == index) {
+									return false;
 								}
-								return true;
-							})
-							
-							var values = rowData.map(
-							/**
-							 * @param {*} value
-							 * @param {Number} index
-							 * @return {String|Number} 
-							 */
-							function(value, index) {
-								var column = table.getColumn(header[index]);
-								//Convert types
-								switch (column.getType()) {
-									case JSColumn.DATETIME:
-										if(value) {
-											if(new RegExp(/^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d/).test(value)) {
-												var newDate = utils.dateFormat(utils.parseDate(value.replace('T',' '),'yyyy-MM-dd HH:mm:ssZ','UTC'), 'yyyy-MM-dd HH:mm:ss');
-												if(newDate) {
-													return "'" + newDate + "'"; 
-												}
-											} else {
-												newDate = utils.dateFormat(new Date(value), 'yyyy-MM-dd HH:mm:ss');
+							}
+							return true;
+						})
+						
+						var values = rowData.map(
+						/**
+						 * @param {*} value
+						 * @param {Number} index
+						 * @return {String|Number} 
+						 */
+						function(value, index) {
+							var column = table.getColumn(header[index]);
+							//Convert types
+							switch (column.getType()) {
+								case JSColumn.DATETIME:
+									if(value) {
+										if(new RegExp(/^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d/).test(value)) {
+											var newDate = utils.dateFormat(utils.parseDate(value.replace('T',' '),'yyyy-MM-dd HH:mm:ssZ','UTC'), 'yyyy-MM-dd HH:mm:ss');
+											if(newDate) {
 												return "'" + newDate + "'"; 
 											}
-										}
-										return 'NULL'; 
-									break;
-									case JSColumn.INTEGER:
-										var returnInt = ['', 'Infinity', 'NaN'].indexOf(value.toString()) != -1 ? 'NULL' : parseInt(value.toString());
-										if (returnInt == NaN) {
-											returnInt = 'NULL';
-										} else if (returnInt != 'NULL') {
-											// FIX for boolean in postgres
-											returnInt = "'" +returnInt + "'";
-										}
-										return returnInt;
-									break;
-									case JSColumn.NUMBER:
-										var returnNum = ['', 'Infinity', 'NaN'].indexOf(value.toString()) != -1 ? 'NULL' : parseFloat(value.toString());
-										if(returnNum == NaN) {
-											returnNum = 'NULL';
-										}
-										return returnNum;
-									break;
-									case JSColumn.MEDIA:
-										if(value) {
-											return "decode('" + value + "', 'base64')";
 										} else {
-											return 'NULL';
+											newDate = utils.dateFormat(new Date(value), 'yyyy-MM-dd HH:mm:ss');
+											return "'" + newDate + "'"; 
 										}
-									break;
-									default:
-										if(!value && column.getAllowNull()){
-											return 'NULL';
-										} else {
-											if(value && value.length > column.getLength()) {
-												value = value.substr(0,column.getLength())
-											}
-											return "'" + utils.stringReplace(value||"", "'", "''") + "'";
+									}
+									return 'NULL'; 
+								break;
+								case JSColumn.INTEGER:
+									var returnInt = ['', 'Infinity', 'NaN'].indexOf(value.toString()) != -1 ? 'NULL' : parseInt(value.toString());
+									if (returnInt == NaN) {
+										returnInt = 'NULL';
+									} else if (returnInt != 'NULL') {
+										// FIX for boolean in postgres
+										returnInt = "'" +returnInt + "'";
+									}
+									return returnInt;
+								break;
+								case JSColumn.NUMBER:
+									var returnNum = ['', 'Infinity', 'NaN'].indexOf(value.toString()) != -1 ? 'NULL' : parseFloat(value.toString());
+									if(returnNum == NaN) {
+										returnNum = 'NULL';
+									}
+									return returnNum;
+								break;
+								case JSColumn.MEDIA:
+									if(value) {
+										return "decode('" + value + "', 'base64')";
+									} else {
+										return 'NULL';
+									}
+								break;
+								default:
+									if(!value && column.getAllowNull()){
+										return 'NULL';
+									} else {
+										if(value && value.length > column.getLength()) {
+											value = value.substr(0,column.getLength())
 										}
-									break;
-								}
-							});
-
-							var query = 'INSERT INTO ' + table.getQuotedSQLName() + ' ("' + header.join('", "') + '") VALUES (' + values.join(', ') + ');'
-
-							queryToExec.push(query);
-							if (counter % 500 == 0) {
-								if(!executeQuery(dbName,table,queryToExec)) {
-									application.output('FAILED TO INSERT insert sql ' + counter + ' of ' + lineCount, LOGGINGLEVEL.ERROR);
-								}
-
-								queryToExec = [];
-								application.output('Executed insert sql ' + counter + ' of ' + lineCount, LOGGINGLEVEL.DEBUG);
+										return "'" + utils.stringReplace(value||"", "'", "''") + "'";
+									}
+								break;
 							}
+						});
+
+						var query = 'INSERT INTO ' + table.getQuotedSQLName() + ' ("' + header.join('", "') + '") VALUES (' + values.join(', ') + ');'
+
+						queryToExec.push(query);
+						if (counter % 500 == 0) {
+							if(!executeQuery(dbName,table,queryToExec)) {
+								application.output('FAILED TO INSERT insert sql ' + counter + ' of ' + lineCount, LOGGINGLEVEL.ERROR);
+							}
+
+							queryToExec = [];
+							application.output('Executed insert sql ' + counter + ' of ' + lineCount, LOGGINGLEVEL.DEBUG);
 						}
 					}
-				})
-			}
+				}
+			})
 		} else {
 			application.output('Import of file: ' + dbName + ' / ' + tableName + ' -skipped / table not found on server!!-', LOGGINGLEVEL.INFO);
 		}
