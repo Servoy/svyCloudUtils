@@ -68,7 +68,20 @@ function importSpecificDataseed(event) {
  *
  * @properties={typeid:24,uuid:"AAD14F44-F5E7-4B43-B1D8-FEC7D111E580"}
  */
-function createDataseedTest(event) {
+function createDataseedWithFilters(event) {
 	application.output('export started: ' + new Date())
 	application.output('export done: ' + new Date())
+}
+
+/**
+ * Perform the element onclick action.
+ *
+ * @param {JSEvent} event the event that triggered the action
+ *
+ * @private
+ *
+ * @properties={typeid:24,uuid:"8C3E7D33-328E-48BF-BB91-AF0A5D91BFEC"}
+ */
+function executeDbUtilsVersionUpgrade(event) {
+	scopes.svyDeployUtils.runDBVersionUpgrade()
 }

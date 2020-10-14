@@ -19,6 +19,38 @@ function copyReportsToServer() {
 }
 
 /**
+ * @param database
+ *
+ * @properties={typeid:24,uuid:"36E4C256-8D63-4A60-9C08-12902328516F"}
+ */
+function removeAllTablesFromDatabase(database) {
+	var tables = databaseManager.createEmptyDataSet(0,['tablename']);
+	if(isPostgresDB(database)) {
+		tables = databaseManager.getDataSetByQuery(database,"select tablename from pg_tables where schemaname = 'public'",[],-1);
+	}
+	
+	for(var i = 0; i < tables.getMaxRowIndex(); i++) {
+		plugins.rawSQL.executeSQL(database,'drop table if exists '+ tables[i].tablename + ' cascade;');
+	}
+	
+	if(!application.isInDeveloper()) {
+		plugins.maintenance.getServer(database).reloadDataModel();
+	}
+}
+
+/**
+ * @private
+ * 
+ * @param {String} dbName
+ * @return {Boolean}
+ *
+ * @properties={typeid:24,uuid:"6E4BCC0B-67F2-4156-96BC-D1B340CB0130"}
+ */
+function isPostgresDB(dbName) {
+	return databaseManager.getDatabaseProductName(dbName).match('postgres') ? true : false;
+}
+
+/**
  * @enum 
  * @properties={typeid:35,uuid:"4BE44304-B2C2-4EFD-96B5-487052500BAE",variableType:-4}
  */
@@ -177,14 +209,14 @@ function parseMediaDBFile(media) {
 }
 /**
  * @private 
- * @param {JSMedia} a
- * @param {JSMedia} b 
+ * @param {parseMediaDBFile} a
+ * @param {parseMediaDBFile} b 
  *
  * @properties={typeid:24,uuid:"9F07B7DD-D1BE-4FE3-9EBB-D4F9B489667C"}
  */
 function sortVersion(a, b) {
-	var correctA = parseMediaDBFile(a).version;
-	var correctB = parseMediaDBFile(b).version;
+	var correctA = a.version;
+	var correctB = b.version;
 	return correctA-correctB;
 }
 
