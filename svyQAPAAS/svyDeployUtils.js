@@ -29,9 +29,13 @@ function removeAllTablesFromDatabase(database) {
 		tables = databaseManager.getDataSetByQuery(database,"select tablename from pg_tables where schemaname = 'public'",[],-1);
 	}
 	
-	for(var i = 0; i < tables.getMaxRowIndex(); i++) {
-		plugins.rawSQL.executeSQL(database,'drop table if exists '+ tables[i].tablename + ' cascade;');
-	}
+    for(var i = 0; i < tables.getMaxRowIndex(); i++) {
+        if(plugins.maintenance.getServer(database).dropTable(tables[i].tablename)) {
+            application.output('Preimport: Dropping table: ' + tables[i].tablename + " SUCCESS", LOGGINGLEVEL.WARNING);
+        } else {
+            application.output('Preimport: Dropping table: ' + tables[i].tablename + " FAILED", LOGGINGLEVEL.ERROR);
+        }
+    }
 	
 	if(!application.isInDeveloper()) {
 		plugins.maintenance.getServer(database).reloadDataModel();
