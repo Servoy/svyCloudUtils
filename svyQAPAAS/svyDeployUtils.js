@@ -29,13 +29,13 @@ function removeAllTablesFromDatabase(database) {
 		tables = databaseManager.getDataSetByQuery(database,"select tablename from pg_tables where schemaname = 'public'",[],-1);
 	}
 	
-    for(var i = 0; i < tables.getMaxRowIndex(); i++) {
+	for(var i = 0; i < tables.getMaxRowIndex(); i++) {
         if(plugins.maintenance.getServer(database).dropTable(tables[i].tablename)) {
             application.output('Preimport: Dropping table: ' + tables[i].tablename + " SUCCESS", LOGGINGLEVEL.WARNING);
         } else {
             application.output('Preimport: Dropping table: ' + tables[i].tablename + " FAILED", LOGGINGLEVEL.ERROR);
         }
-    }
+	}
 	
 	if(!application.isInDeveloper()) {
 		plugins.maintenance.getServer(database).reloadDataModel();
@@ -215,6 +215,8 @@ function parseMediaDBFile(media) {
  * @private 
  * @param {parseMediaDBFile} a
  * @param {parseMediaDBFile} b 
+ * 
+ * @return {Number}
  *
  * @properties={typeid:24,uuid:"9F07B7DD-D1BE-4FE3-9EBB-D4F9B489667C"}
  */
@@ -225,7 +227,7 @@ function sortVersion(a, b) {
 }
 
 /**
- * @private 
+ * @public  
  * @param {String} name
  * 
  * @return {String}
@@ -242,7 +244,7 @@ function getServoyProperty(name) {
 }
 
 /**
- * @private 
+ * @public 
  * @param {String} name
  * @param {String} value
  *
