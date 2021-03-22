@@ -124,7 +124,8 @@ function buildSelectSQL(dbName, jsTable, additionalFilters) {
 		}
 		
 		dbSQL += ' OFFSET ? ROWS FETCH NEXT ? ROWS ONLY;';
-	} else {
+	} else if (!isProgressDB(dbName)) {		// OFFSET AND FETCH for Progress DB is added when running the query
+		// Unsupported BD
 		return null;
 	}
 	
@@ -138,6 +139,8 @@ function buildSelectSQL(dbName, jsTable, additionalFilters) {
 
 
 /**
+ * TODO: Set limitValue as an optional parameter and current logic remains if not present (sample data might not need to query the whole db)
+ * 
  * @private 
  * @param {String} dbName
  * @param {Array<*>} args
@@ -155,13 +158,15 @@ function addOffsetArgs(dbName, args, offset, largeDataField) {
 	}
 	if(isPostgresDB(dbName)) {
 		return args.concat([limitValue, offset])
-	} else if(isMicrosoftDB(dbName)) {
+	} else if(isMicrosoftDB(dbName) || isProgressDB(dbName)) {
 		return args.concat([offset, limitValue]);
 	} else {
 		return null;
 	}
 }
 /**
+ * TODO: Add an optional parameter to limit the number of records returned (sample data might not need to query the whole db)
+ * 
  * @public
  * @param {String} selectedDB
  * @param {String} [customPathToSVYQapaas]
@@ -219,6 +224,7 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFil
 		}
 		
 		var queryObj = buildSelectSQL(selectedDB, jsTable, additionalFilters);
+		// TODO Consider optional parameter for limit the number of records (min between parameter and table count)
 		var tableCount = databaseManager.getDataSetByQuery(queryObj.cntQuery,1).getValue(1,1);
 		var offset = 0;
 		var exportFile = plugins.file.convertToJSFile(tempFolder + scopes.svyIO.getFileSeperator() + jsTable.getSQLName() + '.csv');
@@ -249,7 +255,19 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFil
 		}
 		do {
 			var queryTime = new Date();
-			var dataset = databaseManager.getDataSetByQuery(selectedDB,queryObj.query,addOffsetArgs(selectedDB,queryObj.args,offset, queryObj.largeDataFields),-1);
+			/** @type {Array} */
+			var args = addOffsetArgs(selectedDB,queryObj.args,offset, queryObj.largeDataFields);	// TODO Consider optional parameter for limit the number of records
+			/** @type {String} */
+			var query = queryObj.query;
+			
+			// OpenEdge driver throws exception using parameters for OFFSET AND FETCH, 
+			// add the values directly to the query and remove them from args
+			if (isProgressDB(selectedDB)) {
+				query += ' OFFSET ' + args[args.length - 2] + ' ROWS FETCH NEXT ' + args[args.length - 1] + ' ROWS ONLY';
+				args.splice(args.length - 2, 2);
+			}
+			
+			var dataset = databaseManager.getDataSetByQuery(selectedDB,query,args,-1);
 			var csvHeader = (offset == 0 ? true : false);
 			offset += dataset.getMaxRowIndex();
 			application.output('Export of table: ' + selectedDB + ' / ' + table + ' (getting/parsing offset: ' + offset + ', querytime: ' + (new Date().getTime() - queryTime.getTime()) + 'ms ) -running-', LOGGINGLEVEL.DEBUG);
@@ -364,7 +382,11 @@ function runDataseedFromMedia(clearTablesNotInSeed, dataseedFile, dbNameToImport
 						if (folderItem.isFile() && folderItem.getName().match('.csv')) {
 							tableName = folderItem.getName().replace('.csv', '');
 							jsTable = databaseManager.getTable(importFile.dbName, tableName);
-							if (isMicrosoftDB(importFile.dbName)) {
+							if (!jsTable) {
+								application.output("Skipping table: " + importFile.dbName + "." + tableName + " - table not found", LOGGINGLEVEL.DEBUG);
+								return;
+							}
+							if (isMicrosoftDB(importFile.dbName) || isProgressDB(importFile.dbName)) {
 								executeQuery(importFile.dbName,jsTable,['delete from ' + jsTable.getQuotedSQLName() + ';']);
 							} else {
 								executeQuery(importFile.dbName,jsTable,['TRUNCATE TABLE ' + jsTable.getQuotedSQLName() + ' CASCADE;']);
@@ -451,6 +473,10 @@ function importCsvFile(dbName, tableName, file) {
 				//Clear header with missing columns
 				header = header.filter(function(item) {
 					return (columnDiffs.indexOf(item) === -1)
+				}).map(function(col) {
+					// Quote column name only if needed, Progress supports special chars ($, %, #, -) that need to be quoted
+					// TODO Add more special chars to the regex as needed
+					return /[\$\-%#]/.test(col) ? '"' + col + '"' : ''
 				})
 
 			} 
@@ -531,7 +557,7 @@ function importCsvFile(dbName, tableName, file) {
 							}
 						});
 
-						var query = 'INSERT INTO ' + table.getQuotedSQLName() + ' ("' + header.join('", "') + '") VALUES (' + values.join(', ') + ');'
+						var query = 'INSERT INTO ' + table.getQuotedSQLName() + ' (' + header.join(', ') + ') VALUES (' + values.join(', ') + ');'
 
 						queryToExec.push(query);
 						if (counter % 500 == 0) {
@@ -553,7 +579,8 @@ function importCsvFile(dbName, tableName, file) {
 
 	application.output('Import of file: ' + dbName + ' / ' + tableName + ' -Started-', LOGGINGLEVEL.INFO);
 	
-	scopes.svyDataUtils.parseCSV(plugins.file.readTXTFile(file,'UTF-8'), {delimiter: ',', firstRowHasColumnNames: true, textQualifier: '"'}, importData);
+	var parsedCSV = scopes.svyDataUtils.parseCSV(plugins.file.readTXTFile(file,'UTF-8'), {delimiter: ',', firstRowHasColumnNames: true, textQualifier: '"'});
+	importData(parsedCSV);
 	
 	if (queryToExec.length != 0) {
 		if(!executeQuery(dbName,table,queryToExec)) {
@@ -598,7 +625,10 @@ function executeQuery(dbName, table, queryToExec) {
 		if(table.getColumn(table.getRowIdentifierColumnNames()[0]).getSequenceType() == JSColumn.DATABASE_SEQUENCE && table.getColumn(table.getRowIdentifierColumnNames()[0]).getType() == JSColumn.INTEGER) {
 			queryToExec.push("SELECT setval(pg_get_serial_sequence('" + table.getSQLName() + "', '"+ table.getColumn(table.getRowIdentifierColumnNames()[0]).getQuotedSQLName()+ "'), COALESCE(CAST(max(" + table.getColumn(table.getRowIdentifierColumnNames()[0]).getQuotedSQLName()+ ") AS INT), 1)) FROM " + table.getQuotedSQLName() + ";");
 		}
+	} else if(isPostgresDB(dbName)) {
+		// TODO Implement support to import into a Progress DB
 	}
+		
 
 	try {
 		queryToExec.unshift(preInsertSQL);
@@ -680,4 +710,16 @@ function isMicrosoftDB(dbName) {
  */
 function isPostgresDB(dbName) {
 	return databaseManager.getDatabaseProductName(dbName).match('postgres') ? true : false;
+}
+
+/**
+ * @private
+ * 
+ * @param {String} dbName
+ * @return {Boolean}
+ *
+ * @properties={typeid:24,uuid:"4C156C85-F555-4E1F-BF08-F03ED3A279B0"}
+ */
+function isProgressDB(dbName) {
+	return databaseManager.getDatabaseProductName(dbName).match('openedge') ? true : false;
 }
