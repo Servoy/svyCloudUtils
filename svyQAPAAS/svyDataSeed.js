@@ -139,22 +139,24 @@ function buildSelectSQL(dbName, jsTable, additionalFilters) {
 
 
 /**
- * TODO: Set limitValue as an optional parameter and current logic remains if not present (sample data might not need to query the whole db)
- * 
  * @private 
  * @param {String} dbName
  * @param {Array<*>} args
  * @param {Number} offset
  * @param {Boolean} largeDataField
+ * @param {Number} [limitTableCount] optional integer value to limit the number of records returned per table, useful for getting sample data
  * 
  * @return {Array<*>}
  *
  * @properties={typeid:24,uuid:"1072416E-CDA0-419A-A8EB-BB14A4A939F4"}
  */
-function addOffsetArgs(dbName, args, offset, largeDataField) {
+function addOffsetArgs(dbName, args, offset, largeDataField, limitTableCount) {
 	var limitValue = 20000;
 	if(largeDataField) {
 		limitValue = 100
+	}
+	if (limitTableCount) {
+		limitValue = Math.min(limitValue, limitTableCount);
 	}
 	if(isPostgresDB(dbName)) {
 		return args.concat([limitValue, offset])
@@ -165,20 +167,19 @@ function addOffsetArgs(dbName, args, offset, largeDataField) {
 	}
 }
 /**
- * TODO: Add an optional parameter to limit the number of records returned (sample data might not need to query the whole db)
- * 
  * @public
  * @param {String} selectedDB
  * @param {String} [customPathToSVYQapaas]
  * @param {Boolean} [returnDataseedFile] when true, dataseed will not be written to workspace but return as jsFile
  * @param {Array<{fieldName: String, value: String|Number}>} [additionalFilters] when given the query will add this to the where class (when field exists)
  * @param {Boolean} [runFullTableRecalc] optional boolean to do a full table recalc when having storedcalcs.. will be heavy when there is a lot of data
+ * @param {Number} [limitTableCount] optional integer value to limit the number of records returned per table, useful for getting sample data
  * 
  * @return {plugins.file.JSFile} zipped dataseed file
  *
  * @properties={typeid:24,uuid:"67C8AFB5-1DE1-43D0-BFA9-4AFBDFFB50E3"}
  */
-function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFile, additionalFilters, runFullTableRecalc) {
+function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFile, additionalFilters, runFullTableRecalc, limitTableCount) {
 	var zip = null;
 	if (!selectedDB) {
 		return zip;
@@ -224,8 +225,11 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFil
 		}
 		
 		var queryObj = buildSelectSQL(selectedDB, jsTable, additionalFilters);
-		// TODO Consider optional parameter for limit the number of records (min between parameter and table count)
 		var tableCount = databaseManager.getDataSetByQuery(queryObj.cntQuery,1).getValue(1,1);
+		if (limitTableCount) {
+			tableCount = Math.min(tableCount, limitTableCount);
+		}
+		
 		var offset = 0;
 		var exportFile = plugins.file.convertToJSFile(tempFolder + scopes.svyIO.getFileSeperator() + jsTable.getSQLName() + '.csv');
 		var fileWriter = new scopes.svyIO.BufferedWriter(exportFile,true)
@@ -256,7 +260,7 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFil
 		do {
 			var queryTime = new Date();
 			/** @type {Array} */
-			var args = addOffsetArgs(selectedDB,queryObj.args,offset, queryObj.largeDataFields);	// TODO Consider optional parameter for limit the number of records
+			var args = addOffsetArgs(selectedDB,queryObj.args,offset, queryObj.largeDataFields, limitTableCount);
 			/** @type {String} */
 			var query = queryObj.query;
 			
