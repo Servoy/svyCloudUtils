@@ -487,7 +487,7 @@ function importCsvFile(dbName, tableName, file) {
 				}).map(function(col) {
 					// Quote column name only if needed, Progress supports special chars ($, %, #, -) that need to be quoted
 					// TODO Add more special chars to the regex as needed
-					return /[\$\-%#]/.test(col) ? '"' + col + '"' : ''
+					return /[\$\-%#]/.test(col) ? '"' + col + '"' : col
 				})
 
 			} 
@@ -590,8 +590,7 @@ function importCsvFile(dbName, tableName, file) {
 
 	application.output('Import of file: ' + dbName + ' / ' + tableName + ' -Started-', LOGGINGLEVEL.INFO);
 	
-	var parsedCSV = scopes.svyDataUtils.parseCSV(plugins.file.readTXTFile(file,'UTF-8'), {delimiter: ',', firstRowHasColumnNames: true, textQualifier: '"'});
-	importData(parsedCSV);
+	scopes.svyDataUtils.parseCSV(plugins.file.readTXTFile(file,'UTF-8'), {delimiter: ',', firstRowHasColumnNames: true, textQualifier: '"'}, importData);
 	
 	if (queryToExec.length != 0) {
 		if(!executeQuery(dbName,table,queryToExec)) {
