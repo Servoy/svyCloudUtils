@@ -433,7 +433,14 @@ function importCsvFile(dbName, tableName, file) {
 	var lineCount = scopes.svyIO.getLineCountForFile(file);
 	var columnDiffs = [];
 	var table = databaseManager.getTable(dbName, tableName);
-
+	var quoteCharRegex = new RegExp(escapeRegExp('"') + escapeRegExp('"'), 'g');
+	
+	/** https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions */
+	function escapeRegExp(string)
+	{
+		return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+	}
+	
 	/**@param {{columnNames: Array, data: Array, errors: Array, meta: {delimiter: String, linebreak: String, aborted: Boolean, truncated: Boolean, cursor: Number}}} csvData */
 	function importData(csvData) {
 		if (table) {
@@ -525,7 +532,7 @@ function importCsvFile(dbName, tableName, file) {
 										if(value && value.length > column.getLength()) {
 											value = value.substr(0,column.getLength())
 										}
-										return "'" + utils.stringReplace(value||"", "'", "''") + "'";
+										return "'" + utils.stringReplace(value||"", "'", "''").replace(quoteCharRegex,'"') + "'";
 									}
 								break;
 							}
