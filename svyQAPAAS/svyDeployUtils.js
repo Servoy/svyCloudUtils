@@ -30,11 +30,7 @@ function removeAllTablesFromDatabase(database) {
 	}
 	
 	for(var i = 0; i < tables.getMaxRowIndex(); i++) {
-        if(plugins.maintenance.getServer(database).dropTable(tables[i].tablename)) {
-            application.output('Preimport: Dropping table: ' + tables[i].tablename + " SUCCESS", LOGGINGLEVEL.WARNING);
-        } else {
-            application.output('Preimport: Dropping table: ' + tables[i].tablename + " FAILED", LOGGINGLEVEL.ERROR);
-        }
+		plugins.rawSQL.executeSQL(database,'drop table if exists '+ tables[i].tablename + ' cascade;');
 	}
 	
 	if(!application.isInDeveloper()) {
@@ -240,6 +236,38 @@ function getServoyProperty(name) {
 		return null;
 	}
 	
+	return value.toString();
+}
+
+/**
+ * @public 
+ * @param {String} name
+ * 
+ * @return {String}
+ *
+ * @properties={typeid:24,uuid:"A272EF15-EF8E-486C-9CF6-6C118EC5BD9D"}
+ */
+function getSystemProperty(name) {
+	var value = Packages.java.lang.System.getProperty(name);
+	if (!value) {
+		return null;
+	}
+	return value.toString();
+}
+
+/**
+ * @public 
+ * @param {String} name
+ * 
+ * @return {String}
+ *
+ * @properties={typeid:24,uuid:"608BEC9A-238A-4427-ACBD-14374AA11FAE"}
+ */
+function getEnvironmentProperty(name) {
+	var value = Packages.java.lang.System.getenv(name);
+	if (!value) {
+		return null;
+	}
 	return value.toString();
 }
 
