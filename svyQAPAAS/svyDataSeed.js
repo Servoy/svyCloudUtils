@@ -106,7 +106,7 @@ function buildSelectSQL(dbName, jsTable, additionalFilters) {
 		for (d = 0; d < dataProviderIds.length; d++) {
 			//When timestamp make it return UTC so it will be imported correctly
 			if(jsTable.getColumn(dataProviderIds[d]).getType() == JSColumn.DATETIME) {
-				fieldsToReplace.push("timezone('UTC',"+jsTable.getSQLName() + "." + dataProviderIds[d]+ ") AS " + dataProviderIds[d]);
+				fieldsToReplace.push("timezone('UTC', timezone('UTC',"+jsTable.getSQLName() + "." + dataProviderIds[d]+ ")) AS " + dataProviderIds[d]);
 				dbSQL = dbSQL.replace((jsTable.getSQLName() + '.' + dataProviderIds[d]),'%%' + (fieldsToReplace.length - 1) + '%%')
 			} else if(jsTable.getColumn(dataProviderIds[d]).getType() == JSColumn.MEDIA) {
 				fieldsToReplace.push("encode("+jsTable.getSQLName() + "." + dataProviderIds[d]+ ", 'base64') AS " + dataProviderIds[d]);
@@ -523,7 +523,7 @@ function importCsvFile(dbName, tableName, file) {
 												return "'" + newDate + "'"; 
 											}
 										} else {
-											newDate = utils.dateFormat(utils.parseDate(value,'yyyy-MM-dd HH:mm:ss'), 'yyyy-MM-dd HH:mm:ss');
+											newDate = utils.dateFormat(utils.parseDate(value,'yyyy-MM-dd HH:mm:ss', 'UTC'), 'yyyy-MM-dd HH:mm:ss', 'UTC');
 											if(newDate) {
 												return "'" + newDate + "'"; 
 											}
