@@ -18,11 +18,13 @@ function getWorkspacePath() {
  * @param {String} [customPathToSVYQapaas]
  * @param {Boolean} [returnDataseedFile] when true, dataseed will not be written to workspace but return as jsFile
  * @param {Boolean} [runFullTableRecalc] optional boolean to do a full table recalc when having storedcalcs.. will be heavy when there is a lot of data
+ * @param {Boolean} [noZip] optional when true the export files will not be zipped, the folder with  plain csv will be part of the repository (do not use with large dataseed files)
+ * 
  * @return {plugins.file.JSFile} zipped dataseed file
  * 
  * @properties={typeid:24,uuid:"B89674BA-49DE-4B32-829B-2181B69D44A5"}
  */
-function createDataSeedFiles(customPathToSVYQapaas, returnDataseedFile, runFullTableRecalc) {
+function createDataSeedFiles(customPathToSVYQapaas, returnDataseedFile, runFullTableRecalc, noZip) {
 	var databases = [];
 	datasources['db']['allnames'].forEach(function(item) {
 		if(item != 'repository_server') {
@@ -30,7 +32,7 @@ function createDataSeedFiles(customPathToSVYQapaas, returnDataseedFile, runFullT
 		}
 	})
 	var selectedDB = plugins.dialogs.showSelectDialog('Generate dataseed', 'Select DB to generate dataseed from', databases);
-	return createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFile, null, runFullTableRecalc);
+	return createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFile, null, runFullTableRecalc, null, noZip);
 }
 
 /**
@@ -174,12 +176,13 @@ function addOffsetArgs(dbName, args, offset, largeDataField, limitTableCount) {
  * @param {Array<{fieldName: String, value: String|Number}>} [additionalFilters] when given the query will add this to the where class (when field exists)
  * @param {Boolean} [runFullTableRecalc] optional boolean to do a full table recalc when having storedcalcs.. will be heavy when there is a lot of data
  * @param {Number} [limitTableCount] optional integer value to limit the number of records returned per table, useful for getting sample data
+ * @param {Boolean} [noZip] optional when true the export files will not be zipped, the folder with  plain csv will be part of the repository (do not use with large dataseed files)
  * 
  * @return {plugins.file.JSFile} zipped dataseed file
  *
  * @properties={typeid:24,uuid:"67C8AFB5-1DE1-43D0-BFA9-4AFBDFFB50E3"}
  */
-function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFile, additionalFilters, runFullTableRecalc, limitTableCount) {
+function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFile, additionalFilters, runFullTableRecalc, limitTableCount, noZip) {
 	var zip = null;
 	if (!selectedDB) {
 		return zip;
@@ -283,7 +286,13 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFil
 	}
 
 	if(plugins.file.convertToJSFile(tempFolder).listFiles().length > 0) {
-		zip = scopes.svyIO.zip(plugins.file.convertToJSFile(tempFolder), plugins.file.convertToJSFile(dbFolderPath + scopes.svyIO.getFileSeperator() + selectedDB + '.zip'));
+		if(noZip) {
+			plugins.file.deleteFolder(plugins.file.convertToJSFile(dbFolderPath + scopes.svyIO.getFileSeperator() + selectedDB),false);
+			plugins.file.copyFolder(plugins.file.convertToJSFile(tempFolder),plugins.file.convertToJSFile(dbFolderPath + scopes.svyIO.getFileSeperator() + selectedDB));
+			zip = plugins.file.convertToJSFile(dbFolderPath + scopes.svyIO.getFileSeperator() + selectedDB);
+		} else {
+			zip = scopes.svyIO.zip(plugins.file.convertToJSFile(tempFolder), plugins.file.convertToJSFile(dbFolderPath + scopes.svyIO.getFileSeperator() + selectedDB + '.zip'));
+		}
 	}
 	plugins.file.deleteFolder(tempFolder, false);
 
@@ -323,6 +332,12 @@ function DataseedFile(file, dbName) {
 	 */
 	this.fileName = (file instanceof JSMedia ? file.getName().split('/').pop() : file.getName())
 
+	/**
+	 * @public  
+	 * @type {String}
+	 */
+	this.isZipFile = this.fileName.endsWith('.zip');
+	
 	/** 
 	 * @public 
 	 * @type {Array<byte>}
@@ -351,6 +366,8 @@ function getExistingDataseeds() {
 			var splitString = media.getName().split('/');
 			if (media.getName().match('.zip')) {
 				existingDataseeds.push(new DataseedFile(media, splitString.pop().replace('.zip', '')));
+			} else if(media.getName().match('.csv')){
+				existingDataseeds.push(new DataseedFile(media, splitString[splitString.length -2]));
 			}
 		}
 	}
@@ -369,74 +386,98 @@ function runDataseedFromMedia(clearTablesNotInSeed, dataseedFile, dbNameToImport
 	var file, tableName
 	/**@type {Array<DataseedFile>} */
 	var mediaList = (dataseedFile  && dbNameToImport ? [new DataseedFile(dataseedFile,dbNameToImport)] :  getExistingDataseeds());
-	var seededTables = [];
+	var seededTables = {};
 	var jsTable
+	var systemProperties = scopes.svySystem.getSystemProperties();
+	
+	mediaList = mediaList.sort(/**  @param {DataseedFile} a 
+						@param {DataseedFile} b */ function(a, b) {
+		return a.dbName.localeCompare(b.dbName)
+	})
+	
+	/**@type {Array<plugins.file.JSFile>} */
+	var foldersToImport = [];
 	for each (var importFile in mediaList) {
+		if(importFile.isZipFile) {
 			file = plugins.file.createTempFile('', '.zip');
 			if(importFile.remoteFile) {
 				plugins.file.copyFile(importFile.remoteFile, file);
 			} else {
 				plugins.file.writeFile(file, importFile['getBytes']());
 			}
-			var unzipedFolder = scopes.svyIO.unzip(file);
-			if (unzipedFolder && unzipedFolder.isDirectory()) {
-				var zipContent = plugins.file.getFolderContents(unzipedFolder);
-				for(var i = 1 ; i <= 5; i++) {
-					zipContent.forEach(/**@param {plugins.file.JSFile} folderItem */ function(folderItem) {
-						if (folderItem.isFile() && folderItem.getName().match('.csv')) {
-							tableName = folderItem.getName().replace('.csv', '');
-							jsTable = databaseManager.getTable(importFile.dbName, tableName);
-							if (!jsTable) {
-								application.output("Skipping table: " + importFile.dbName + "." + tableName + " - table not found", LOGGINGLEVEL.DEBUG);
-								return;
-							}
-							if (isMicrosoftDB(importFile.dbName) || isProgressDB(importFile.dbName)) {
-								executeQuery(importFile.dbName,jsTable,['delete from ' + jsTable.getQuotedSQLName() + ';']);
-							} else {
-								executeQuery(importFile.dbName,jsTable,['TRUNCATE TABLE ' + jsTable.getQuotedSQLName() + ' CASCADE;']);
-							}							
-						}
-					})
-				}
-				if(executeInTransaction == true) {
-					databaseManager.startTransaction();
-				}
-				
+			foldersToImport.push(scopes.svyIO.unzip(file));
+		} else {
+			plugins.file.createFolder(systemProperties.javaIoTmpdir + systemProperties.fileSeparator + importFile.dbName);
+			foldersToImport.push(plugins.file.convertToJSFile(systemProperties.javaIoTmpdir + systemProperties.fileSeparator + importFile.dbName));
+			file = plugins.file.createFile(systemProperties.javaIoTmpdir + systemProperties.fileSeparator + importFile.dbName + systemProperties.fileSeparator + importFile.fileName);
+			plugins.file.writeFile(file, importFile['getBytes']());
+		}
+	}
+	
+	foldersToImport.forEach(/**@param {plugins.file.JSFile} folderWithData */ function(folderWithData) {
+		var dbName = folderWithData.getName();
+		if (folderWithData && folderWithData.isDirectory()) {
+			var zipContent = plugins.file.getFolderContents(folderWithData);
+			for(var i = 1 ; i <= 5; i++) {
 				zipContent.forEach(/**@param {plugins.file.JSFile} folderItem */ function(folderItem) {
 					if (folderItem.isFile() && folderItem.getName().match('.csv')) {
 						tableName = folderItem.getName().replace('.csv', '');
-						importCsvFile(importFile.dbName, tableName, folderItem);
-						seededTables.push(tableName);
+						jsTable = databaseManager.getTable(dbName, tableName);
+						if (!jsTable) {
+							application.output("Skipping table: " + dbName + "." + tableName + " - table not found", LOGGINGLEVEL.DEBUG);
+							return;
+						}
+						if (isMicrosoftDB(dbName) || isProgressDB(dbName)) {
+							executeQuery(dbName,jsTable,['delete from ' + jsTable.getQuotedSQLName() + ';']);
+						} else {
+							executeQuery(dbName,jsTable,['TRUNCATE TABLE ' + jsTable.getQuotedSQLName() + ' CASCADE;']);
+						}							
 					}
 				})
-				
-				if(executeInTransaction == true) {
-					databaseManager.commitTransaction(true,false);
-				}
 			}
-
-			plugins.file.deleteFile(file);
-			plugins.file.deleteFolder(unzipedFolder, false);
+			if(executeInTransaction == true) {
+				databaseManager.startTransaction();
+			}
 			
-			if(clearTablesNotInSeed == true) {
-				var tables = databaseManager.getTableNames(importFile.dbName);
-				for each(var table in tables) {
-					if(seededTables.indexOf(table) == -1) {
-						jsTable = databaseManager.getTable(importFile.dbName, table);
-						if (jsTable.isMetadataTable()) {
-							application.output("Skipping clearing metadata table: " + jsTable.getDataSource(), LOGGINGLEVEL.DEBUG);
-						} else if(Packages.com.servoy.j2db.J2DBGlobals.getServiceProvider().getSolution().getI18nDataSource() == jsTable.getDataSource()) { 
-							application.output("Skipping clearing i18n table: " + jsTable.getDataSource(), LOGGINGLEVEL.DEBUG);
+			zipContent.forEach(/**@param {plugins.file.JSFile} folderItem */ function(folderItem) {
+				if (folderItem.isFile() && folderItem.getName().match('.csv')) {
+					tableName = folderItem.getName().replace('.csv', '');
+					importCsvFile(dbName, tableName, folderItem);
+					if(!seededTables[dbName]) {
+						seededTables[dbName] = new Array();
+					}
+					seededTables[dbName].push(tableName);
+				}
+			})
+			
+			if(executeInTransaction == true) {
+				databaseManager.commitTransaction(true,false);
+			}
+		}
+		
+		plugins.file.deleteFolder(folderWithData, false);	
+	});
+
+	if(clearTablesNotInSeed == true) {
+		Object.keys(seededTables).forEach(/** @param {String} dbName */ function(dbName) {
+			var tables = databaseManager.getTableNames(dbName);
+			for each(var table in tables) {
+				if(seededTables[dbName].indexOf(table) == -1) {
+					jsTable = databaseManager.getTable(dbName, table);
+					if (jsTable.isMetadataTable()) {
+						application.output("Skipping clearing metadata table: " + jsTable.getDataSource(), LOGGINGLEVEL.DEBUG);
+					} else if(Packages.com.servoy.j2db.J2DBGlobals.getServiceProvider().getSolution().getI18nDataSource() == jsTable.getDataSource()) { 
+						application.output("Skipping clearing i18n table: " + jsTable.getDataSource(), LOGGINGLEVEL.DEBUG);
+					} else {
+						if (isMicrosoftDB(dbName)) {
+							executeQuery(dbName,jsTable,['delete from ' + jsTable.getQuotedSQLName() + ';']);
 						} else {
-						if (isMicrosoftDB(importFile.dbName)) {
-							executeQuery(importFile.dbName,jsTable,['delete from ' + jsTable.getQuotedSQLName() + ';']);
-						} else {
-							executeQuery(importFile.dbName,jsTable,['TRUNCATE TABLE ' + jsTable.getQuotedSQLName() + ' CASCADE;']);
+							executeQuery(dbName,jsTable,['TRUNCATE TABLE ' + jsTable.getQuotedSQLName() + ' CASCADE;']);
 						}
 					}
 				}
 			}
-		}
+		})
 	}
 }
 
