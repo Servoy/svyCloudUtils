@@ -407,8 +407,10 @@ function runDataseedFromMedia(clearTablesNotInSeed, dataseedFile, dbNameToImport
 			}
 			foldersToImport.push(scopes.svyIO.unzip(file));
 		} else {
-			plugins.file.createFolder(systemProperties.javaIoTmpdir + systemProperties.fileSeparator + importFile.dbName);
-			foldersToImport.push(plugins.file.convertToJSFile(systemProperties.javaIoTmpdir + systemProperties.fileSeparator + importFile.dbName));
+			if(foldersToImport.indexOf(systemProperties.javaIoTmpdir + systemProperties.fileSeparator + importFile.dbName) == -1) {
+				plugins.file.createFolder(systemProperties.javaIoTmpdir + systemProperties.fileSeparator + importFile.dbName);
+				foldersToImport.push(plugins.file.convertToJSFile(systemProperties.javaIoTmpdir + systemProperties.fileSeparator + importFile.dbName));
+			}
 			file = plugins.file.createFile(systemProperties.javaIoTmpdir + systemProperties.fileSeparator + importFile.dbName + systemProperties.fileSeparator + importFile.fileName);
 			plugins.file.writeFile(file, importFile['getBytes']());
 		}
