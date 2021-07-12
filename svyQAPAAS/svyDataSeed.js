@@ -19,12 +19,12 @@ function getWorkspacePath() {
  * @param {Boolean} [returnDataseedFile] when true, dataseed will not be written to workspace but return as jsFile
  * @param {Boolean} [runFullTableRecalc] optional boolean to do a full table recalc when having storedcalcs.. will be heavy when there is a lot of data
  * @param {Boolean} [noZip] optional when true the export files will not be zipped, the folder with  plain csv will be part of the repository (do not use with large dataseed files)
- * 
+ * @param {Array<String>} [excludeTableNames] Array with table names to filter for export, it has support for % as wildcard
  * @return {plugins.file.JSFile} zipped dataseed file
  * 
  * @properties={typeid:24,uuid:"B89674BA-49DE-4B32-829B-2181B69D44A5"}
  */
-function createDataSeedFiles(customPathToSVYQapaas, returnDataseedFile, runFullTableRecalc, noZip) {
+function createDataSeedFiles(customPathToSVYQapaas, returnDataseedFile, runFullTableRecalc, noZip, excludeTableNames) {
 	var databases = [];
 	datasources['db']['allnames'].forEach(function(item) {
 		if(item != 'repository_server') {
@@ -32,7 +32,7 @@ function createDataSeedFiles(customPathToSVYQapaas, returnDataseedFile, runFullT
 		}
 	})
 	var selectedDB = plugins.dialogs.showSelectDialog('Generate dataseed', 'Select DB to generate dataseed from', databases);
-	return createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFile, null, runFullTableRecalc, null, noZip);
+	return createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFile, null, runFullTableRecalc, null, noZip, excludeTableNames);
 }
 
 /**
@@ -177,12 +177,12 @@ function addOffsetArgs(dbName, args, offset, largeDataField, limitTableCount) {
  * @param {Boolean} [runFullTableRecalc] optional boolean to do a full table recalc when having storedcalcs.. will be heavy when there is a lot of data
  * @param {Number} [limitTableCount] optional integer value to limit the number of records returned per table, useful for getting sample data
  * @param {Boolean} [noZip] optional when true the export files will not be zipped, the folder with  plain csv will be part of the repository (do not use with large dataseed files)
- * 
+ * @param {Array<String>} [excludeTableNames] Array with table names to filter for export, it has support for % as wildcard.
  * @return {plugins.file.JSFile} zipped dataseed file
  *
  * @properties={typeid:24,uuid:"67C8AFB5-1DE1-43D0-BFA9-4AFBDFFB50E3"}
  */
-function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFile, additionalFilters, runFullTableRecalc, limitTableCount, noZip) {
+function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFile, additionalFilters, runFullTableRecalc, limitTableCount, noZip, excludeTableNames) {
 	var zip = null;
 	if (!selectedDB) {
 		return zip;
@@ -207,6 +207,27 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFil
 	plugins.file.createFolder(tempFolder);
 
 	for each (var table in tables) {
+		
+		if(excludeTableNames && excludeTableNames.length > 0) {
+			var matchedFilters = excludeTableNames.filter(/**@param {String} excludeTable */function(excludeTable) {
+				if(table == excludeTable) {
+					return true;
+				} else if((excludeTable.startsWith('%') && excludeTable.endsWith('%')) && table.includes(excludeTable.replace(/%/g,''))) {
+					return true;
+				} else if(excludeTable.endsWith('%') && table.startsWith(excludeTable.replace(/%/g,''))) {
+					return true;
+				} else if(excludeTable.startsWith('%') && table.endsWith(excludeTable.replace(/%/g,''))) {
+					return true
+				} else {
+					return false;
+				}
+			});
+			
+			if(matchedFilters.length > 0) {
+				continue;
+			}
+		}
+		
 		try {
 			var fs = databaseManager.getFoundSet(selectedDB, table);
 			var jsTable = databaseManager.getTable(fs);
