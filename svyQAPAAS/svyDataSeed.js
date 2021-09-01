@@ -424,9 +424,9 @@ function getExistingDataseeds() {
  */
 function runDataseedFromMedia(clearTablesNotInSeed, dataseedFile, dbNameToImport, executeInTransaction, deleteExistingData) {
 	// Set default values
-	deleteExistingData = deleteExistingData == undefined ? true : false;
-	executeInTransaction = executeInTransaction == undefined ? false : true;
-	clearTablesNotInSeed = clearTablesNotInSeed == undefined ? false : true;
+	deleteExistingData = !!deleteExistingData ? true : false;
+	executeInTransaction = !!executeInTransaction ? false : true;
+	clearTablesNotInSeed = !!clearTablesNotInSeed ? false : true;
 	
 	var file, tableName
 	/**@type {Array<DataseedFile>} */
@@ -726,7 +726,7 @@ function executeQuery(dbName, table, queryToExec) {
 		if(table.getColumn(table.getRowIdentifierColumnNames()[0]).getSequenceType() == JSColumn.DATABASE_SEQUENCE && table.getColumn(table.getRowIdentifierColumnNames()[0]).getType() == JSColumn.INTEGER) {
 			queryToExec.push("SELECT setval(pg_get_serial_sequence('" + table.getSQLName() + "', '"+ table.getColumn(table.getRowIdentifierColumnNames()[0]).getQuotedSQLName()+ "'), COALESCE(CAST(max(" + table.getColumn(table.getRowIdentifierColumnNames()[0]).getQuotedSQLName()+ ") AS INT), 1)) FROM " + table.getQuotedSQLName() + ";");
 		}
-	} else if(isPostgresDB(dbName)) {
+	} else if(isProgressDB(dbName)) {
 		// TODO Implement support to import into a Progress DB
 	}
 		
