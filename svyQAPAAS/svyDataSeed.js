@@ -61,8 +61,8 @@ function removeExistingDataSeedFile(dataseedToRemove, customDataseedPath) {
  * @private 
  * @param {String} dbName
  * @param {JSTable} jsTable
- * @param {Array<{fieldName: String, value: String|Number}>} [additionalFilters]
- * @return {{query: String, cntQuery: QBSelect, args: Array<*>, largeDataFields: Boolean}}
+ * @param {Array<{fieldName: String, value: String|Number, [required]:Boolean}>} [additionalFilters]
+ * @return {{query: String, cntQuery: QBSelect, args: Array<*>, largeDataFields: Boolean}|Boolean}
  * @properties={typeid:24,uuid:"F6B909B6-76E3-48A2-9A57-9728EC843BB4"}
  */
 function buildSelectSQL(dbName, jsTable, additionalFilters) {
@@ -93,6 +93,11 @@ function buildSelectSQL(dbName, jsTable, additionalFilters) {
 			if(jsTable.getColumn(filter.fieldName)) {
 				sql.where.add(sql.columns[filter.fieldName].eq(filter.value)); //Add to the data query
 				cntSql.where.add(cntSql.columns[filter.fieldName].eq(filter.value)); //Add to countQuery
+			} else {
+				if(filter.hasOwnProperty('required') && filter.required === true) {
+					application.output("Skipping table: " + jsTable.getDataSource() + " additional filter added with required flag column (" + filter.fieldName+ ") not found", LOGGINGLEVEL.INFO);
+					return false;
+				}
 			}
 		}
 	}
@@ -173,7 +178,10 @@ function addOffsetArgs(dbName, args, offset, largeDataField, limitTableCount) {
  * @param {String} selectedDB
  * @param {String} [customPathToSVYQapaas]
  * @param {Boolean} [returnDataseedFile] when true, dataseed will not be written to workspace but return as jsFile
- * @param {Array<{fieldName: String, value: String|Number}>} [additionalFilters] when given the query will add this to the where class (when field exists)
+ * @param {Array<{fieldName: String, value: String|Number, [required]:Boolean}>} [additionalFilters] when given the query will add this to the where class (when field exists)
+ * 			Fieldname: The DB Field that needs to be filtered
+ * 			Value: The filter value
+ * 			Required: Default false, when required it true and the field is missing in the table it will skip the table
  * @param {Boolean} [runFullTableRecalc] optional boolean to do a full table recalc when having storedcalcs.. will be heavy when there is a lot of data
  * @param {Number} [limitTableCount] optional integer value to limit the number of records returned per table, useful for getting sample data
  * @param {Boolean} [noZip] optional when true the export files will not be zipped, the folder with  plain csv will be part of the repository (do not use with large dataseed files)
@@ -249,6 +257,10 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFil
 		}
 		
 		var queryObj = buildSelectSQL(selectedDB, jsTable, additionalFilters);
+		if(queryObj instanceof Boolean && queryObj == false) {
+			application.output("Skipping table: " + jsTable.getDataSource() + " additional filter added with required flag column not found", LOGGINGLEVEL.DEBUG);
+			continue
+		}
 		var tableCount = databaseManager.getDataSetByQuery(queryObj.cntQuery,1).getValue(1,1);
 		if (limitTableCount) {
 			tableCount = Math.min(tableCount, limitTableCount);
@@ -370,6 +382,12 @@ function DataseedFile(file, dbName) {
 			return file.getBytes();
 		}
 	}
+	
+	/**
+	 * @public
+	 * @type {plugins.file.JSFile}  
+	 */
+	this.unzipDirectory = null;
 }
 
 /**
@@ -396,14 +414,20 @@ function getExistingDataseeds() {
 }
 
 /**
- * @param {Boolean} [clearTablesNotInSeed] optional Clear all tables that are not in the dataseed zip file of the db server.
+ * @param {Boolean} [clearTablesNotInSeed] (Default: False) optional Clear all tables that are not in the dataseed zip file of the db server.
  * @param {plugins.file.JSFile} [dataseedFile] file to import instead of all files from media
  * @param {String} [dbNameToImport] databaseName to import the given dataseedfile (only works when other param is set)
- * @param {Boolean} [executeInTransaction] When true execution will be done in an single db transaction
+ * @param {Boolean} [executeInTransaction] (Default: False) When true execution will be done in an single db transaction
+ * @param {Boolean} [deleteExistingData] (Default: True) When true existing data in tables will be cleared
  * @public
  * @properties={typeid:24,uuid:"9E1D40BE-49BB-401D-85FF-B4E5FF920547"}
  */
-function runDataseedFromMedia(clearTablesNotInSeed, dataseedFile, dbNameToImport, executeInTransaction) {
+function runDataseedFromMedia(clearTablesNotInSeed, dataseedFile, dbNameToImport, executeInTransaction, deleteExistingData) {
+	// Set default values
+	deleteExistingData = deleteExistingData == undefined ? true : false;
+	executeInTransaction = executeInTransaction == undefined ? false : true;
+	clearTablesNotInSeed = clearTablesNotInSeed == undefined ? false : true;
+	
 	var file, tableName
 	/**@type {Array<DataseedFile>} */
 	var mediaList = (dataseedFile  && dbNameToImport ? [new DataseedFile(dataseedFile,dbNameToImport)] :  getExistingDataseeds());
@@ -426,35 +450,38 @@ function runDataseedFromMedia(clearTablesNotInSeed, dataseedFile, dbNameToImport
 			} else {
 				plugins.file.writeFile(file, importFile['getBytes']());
 			}
-			foldersToImport.push(scopes.svyIO.unzip(file));
+			importFile.unzipDirectory = scopes.svyIO.unzip(file);
+			 
 		} else {
 			if(foldersToImport.indexOf(systemProperties.javaIoTmpdir + systemProperties.fileSeparator + importFile.dbName) == -1) {
 				plugins.file.createFolder(systemProperties.javaIoTmpdir + systemProperties.fileSeparator + importFile.dbName);
-				foldersToImport.push(plugins.file.convertToJSFile(systemProperties.javaIoTmpdir + systemProperties.fileSeparator + importFile.dbName));
+				importFile.unzipDirectory = plugins.file.convertToJSFile(systemProperties.javaIoTmpdir + systemProperties.fileSeparator + importFile.dbName);
+				foldersToImport.push(importFile.unzipDirectory)
 			}
 			file = plugins.file.createFile(systemProperties.javaIoTmpdir + systemProperties.fileSeparator + importFile.dbName + systemProperties.fileSeparator + importFile.fileName);
 			plugins.file.writeFile(file, importFile['getBytes']());
 		}
 	}
 	
-	foldersToImport.forEach(/**@param {plugins.file.JSFile} folderWithData */ function(folderWithData) {
-		var dbName = folderWithData.getName();
-		if (folderWithData && folderWithData.isDirectory()) {
-			var zipContent = plugins.file.getFolderContents(folderWithData);
+	mediaList.forEach(/**@param {DataseedFile} mediaItem */ function(mediaItem) {
+		if (mediaItem.unzipDirectory && mediaItem.unzipDirectory.isDirectory()) {
+			var zipContent = plugins.file.getFolderContents(mediaItem.unzipDirectory);
 			for(var i = 1 ; i <= 5; i++) {
 				zipContent.forEach(/**@param {plugins.file.JSFile} folderItem */ function(folderItem) {
 					if (folderItem.isFile() && folderItem.getName().match('.csv')) {
 						tableName = folderItem.getName().replace('.csv', '');
-						jsTable = databaseManager.getTable(dbName, tableName);
+						jsTable = databaseManager.getTable(mediaItem.dbName, tableName);
 						if (!jsTable) {
-							application.output("Skipping table: " + dbName + "." + tableName + " - table not found", LOGGINGLEVEL.DEBUG);
+							application.output("Skipping table: " + mediaItem.dbName + "." + tableName + " - table not found", LOGGINGLEVEL.DEBUG);
 							return;
 						}
-						if (isMicrosoftDB(dbName) || isProgressDB(dbName)) {
-							executeQuery(dbName,jsTable,['delete from ' + jsTable.getQuotedSQLName() + ';']);
-						} else {
-							executeQuery(dbName,jsTable,['TRUNCATE TABLE ' + jsTable.getQuotedSQLName() + ' CASCADE;']);
-						}							
+						if(deleteExistingData == true) {
+							if (isMicrosoftDB(mediaItem.dbName) || isProgressDB(mediaItem.dbName)) {
+								executeQuery(mediaItem.dbName,jsTable,['delete from ' + jsTable.getQuotedSQLName() + ';']);
+							} else {
+								executeQuery(mediaItem.dbName,jsTable,['TRUNCATE TABLE ' + jsTable.getQuotedSQLName() + ' CASCADE;']);
+							}
+						}
 					}
 				})
 			}
@@ -465,11 +492,11 @@ function runDataseedFromMedia(clearTablesNotInSeed, dataseedFile, dbNameToImport
 			zipContent.forEach(/**@param {plugins.file.JSFile} folderItem */ function(folderItem) {
 				if (folderItem.isFile() && folderItem.getName().match('.csv')) {
 					tableName = folderItem.getName().replace('.csv', '');
-					importCsvFile(dbName, tableName, folderItem);
-					if(!seededTables[dbName]) {
-						seededTables[dbName] = new Array();
+					importCsvFile(mediaItem.dbName, tableName, folderItem);
+					if(!seededTables[mediaItem.dbName]) {
+						seededTables[mediaItem.dbName] = new Array();
 					}
-					seededTables[dbName].push(tableName);
+					seededTables[mediaItem.dbName].push(tableName);
 				}
 			})
 			
@@ -478,7 +505,7 @@ function runDataseedFromMedia(clearTablesNotInSeed, dataseedFile, dbNameToImport
 			}
 		}
 		
-		plugins.file.deleteFolder(folderWithData, false);	
+		plugins.file.deleteFolder(mediaItem.unzipDirectory, false);	
 	});
 
 	if(clearTablesNotInSeed == true) {
