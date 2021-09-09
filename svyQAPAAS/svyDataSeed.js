@@ -7,6 +7,8 @@
 function getWorkspacePath() {
 	var workspacePath = java.lang.System.getProperty("osgi.instance.area");
 	if (scopes.svySystem.isWindowsPlatform()) {
+	//Can't use scopes.svySystem.. that is also controlled by browser
+	if (/Windows/.test(scopes.svySystem.getSystemProperties().osName)) {
 		return workspacePath.substr(6, workspacePath.length);
 	} else {
 		return workspacePath.substr(5, workspacePath.length);
