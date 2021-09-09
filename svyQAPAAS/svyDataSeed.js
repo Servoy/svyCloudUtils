@@ -201,7 +201,7 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFil
 	if(returnDataseedFile == undefined) {
 		returnDataseedFile = application.isInDeveloper();
 	}
-	
+	excludeTableNames = (excludeTableNames == undefined ? excludeTableNames = ['temp_%'] : excludeTableNames.push('temp_%'));
 	var workspacePath = returnDataseedFile ? getWorkspacePath() : scopes.svySystem.getSystemProperties().javaIoTmpdir;
 	var tables = databaseManager.getTableNames(selectedDB);
 	var dbFolderPath = [workspacePath, 'svyQAPAAS', 'medias', 'dataseeds'].join(scopes.svyIO.getFileSeperator());
@@ -725,7 +725,7 @@ function executeQuery(dbName, table, queryToExec) {
 			postInsertSQL = 'SET IDENTITY_INSERT ' + table.getQuotedSQLName() + ' OFF;' + postInsertSQL;
 		}
 	} else if(isPostgresDB(dbName)) {
-		if(table.getColumn(table.getRowIdentifierColumnNames()[0]).getSequenceType() == JSColumn.DATABASE_SEQUENCE && table.getColumn(table.getRowIdentifierColumnNames()[0]).getType() == JSColumn.INTEGER) {
+		if(table.getRowIdentifierColumnNames().length > 0 && table.getColumn(table.getRowIdentifierColumnNames()[0]).getSequenceType() == JSColumn.DATABASE_SEQUENCE && table.getColumn(table.getRowIdentifierColumnNames()[0]).getType() == JSColumn.INTEGER) {
 			queryToExec.push("SELECT setval(pg_get_serial_sequence('" + table.getSQLName() + "', '"+ table.getColumn(table.getRowIdentifierColumnNames()[0]).getQuotedSQLName()+ "'), COALESCE(CAST(max(" + table.getColumn(table.getRowIdentifierColumnNames()[0]).getQuotedSQLName()+ ") AS INT), 1)) FROM " + table.getQuotedSQLName() + ";");
 		}
 	} else if(isProgressDB(dbName)) {
