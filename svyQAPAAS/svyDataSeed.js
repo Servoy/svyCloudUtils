@@ -6,7 +6,6 @@
  */
 function getWorkspacePath() {
 	var workspacePath = java.lang.System.getProperty("osgi.instance.area");
-	if (scopes.svySystem.isWindowsPlatform()) {
 	//Can't use scopes.svySystem.. that is also controlled by browser
 	if (/Windows/.test(scopes.svySystem.getSystemProperties().osName)) {
 		return workspacePath.substr(6, workspacePath.length);
@@ -605,59 +604,66 @@ function importCsvFile(dbName, tableName, file) {
 						 * @return {String|Number} 
 						 */
 						function(value, index) {
-							var column = table.getColumn(header[index]);
+							/**@type {String} */
+							var columnName = header[index] || JSON.parse(header[index])
+							var column = table.getColumn(columnName);
 							//Convert types
-							switch (column.getType()) {
+							if(column) {
+								switch (column.getType()) {
 								case JSColumn.DATETIME:
-									if(value) {
-										if(new RegExp(/^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d/).test(value)) {
-											var newDate = utils.dateFormat(utils.parseDate(value.replace('T',' '),'yyyy-MM-dd HH:mm:ssZ','UTC'), 'yyyy-MM-dd HH:mm:ss');
-											if(newDate) {
-												return "'" + newDate + "'"; 
+									if (value) {
+										if (new RegExp(/^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d/).test(value)) {
+											var newDate = utils.dateFormat(utils.parseDate(value.replace('T', ' '), 'yyyy-MM-dd HH:mm:ssZ', 'UTC'), 'yyyy-MM-dd HH:mm:ss');
+											if (newDate) {
+												return "'" + newDate + "'";
 											}
 										} else {
-											newDate = utils.dateFormat(utils.parseDate(value,'yyyy-MM-dd HH:mm:ss', 'UTC'), 'yyyy-MM-dd HH:mm:ss', 'UTC');
-											if(newDate) {
-												return "'" + newDate + "'"; 
+											newDate = utils.dateFormat(utils.parseDate(value, 'yyyy-MM-dd HH:mm:ss', 'UTC'), 'yyyy-MM-dd HH:mm:ss', 'UTC');
+											if (newDate) {
+												return "'" + newDate + "'";
 											}
 										}
 									}
-									return 'NULL'; 
-								break;
+									return 'NULL';
+									break;
 								case JSColumn.INTEGER:
 									var returnInt = ['', 'Infinity', 'NaN'].indexOf(value.toString()) != -1 ? 'NULL' : parseInt(value.toString());
 									if (returnInt == NaN) {
 										returnInt = 'NULL';
 									} else if (returnInt != 'NULL') {
 										// FIX for boolean in postgres
-										returnInt = "'" +returnInt + "'";
+										returnInt = "'" + returnInt + "'";
 									}
 									return returnInt;
-								break;
+									break;
 								case JSColumn.NUMBER:
 									var returnNum = ['', 'Infinity', 'NaN'].indexOf(value.toString()) != -1 ? 'NULL' : parseFloat(value.toString());
-									if(returnNum == NaN) {
+									if (returnNum == NaN) {
 										returnNum = 'NULL';
 									}
 									return returnNum;
-								break;
+									break;
 								case JSColumn.MEDIA:
-									if(value) {
+									if (value) {
 										return "decode('" + value + "', 'base64')";
 									} else {
 										return 'NULL';
 									}
-								break;
+									break;
 								default:
-									if(!value && column.getAllowNull()){
+									if (!value && column.getAllowNull()) {
 										return 'NULL';
 									} else {
-										if(value && value.length > column.getLength()) {
-											value = value.substr(0,column.getLength())
+										if (value && value.length > column.getLength()) {
+											value = value.substr(0, column.getLength())
 										}
-										return "'" + utils.stringReplace(value||"", "'", "''").replace(quoteCharRegex,'"') + "'";
+										return "'" + utils.stringReplace(value || "", "'", "''").replace(quoteCharRegex, '"') + "'";
 									}
-								break;
+									break;
+								}
+							} else {
+								application.output("FAILED TO GET COLUMN: " + header[index] + " IN TABLE: " + tableName, LOGGINGLEVEL.ERROR);
+								return 'NULL';
 							}
 						});
 
