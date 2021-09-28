@@ -269,7 +269,8 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFil
 		
 		var offset = 0;
 		var exportFile = plugins.file.convertToJSFile(tempFolder + scopes.svyIO.getFileSeperator() + jsTable.getSQLName() + '.csv');
-		var fileWriter = new scopes.svyIO.BufferedWriter(exportFile,true)
+		var fileWriter = new scopes.svyIO.BufferedWriter(exportFile,true);
+		var numberOfFileCounter = 1;
 		application.output('Export of table: ' + selectedDB + ' / ' + table + ' (rows: ' + tableCount + ') -start-');
 		if(runFullTableRecalc) {
 			var hasStoredCalcs = false;
@@ -312,7 +313,17 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFil
 			var csvHeader = (offset == 0 ? true : false);
 			offset += dataset.getMaxRowIndex();
 			application.output('Export of table: ' + selectedDB + ' / ' + table + ' (getting/parsing offset: ' + offset + ', querytime: ' + (new Date().getTime() - queryTime.getTime()) + 'ms ) -running-', LOGGINGLEVEL.DEBUG);
-			fileWriter.write(dataset.getAsText(',','\r\n','"',csvHeader));
+			
+			if(plugins.file.getFileSize(exportFile) > 200000000) {
+				fileWriter.close();
+				numberOfFileCounter++;
+				exportFile = plugins.file.convertToJSFile(tempFolder + scopes.svyIO.getFileSeperator() + jsTable.getSQLName() + '#' + numberOfFileCounter +'.csv');
+				fileWriter = new scopes.svyIO.BufferedWriter(exportFile,true)
+				fileWriter.write(dataset.getAsText(',','\r\n','"',true));
+			} else {
+				fileWriter.write(dataset.getAsText(',','\r\n','"',csvHeader));
+			}
+			
 			dataset = null;
 		} while (offset < tableCount && offset < 100000); //TODO: LIMIT SHOULD BE REMOVED!!
 		fileWriter.close();
@@ -426,8 +437,8 @@ function getExistingDataseeds() {
 function runDataseedFromMedia(clearTablesNotInSeed, dataseedFile, dbNameToImport, executeInTransaction, deleteExistingData) {
 	// Set default values
 	deleteExistingData = !!deleteExistingData ? true : false;
-	executeInTransaction = !!executeInTransaction ? false : true;
-	clearTablesNotInSeed = !!clearTablesNotInSeed ? false : true;
+	executeInTransaction = !!executeInTransaction ? true : false;
+	clearTablesNotInSeed = !!clearTablesNotInSeed ? true : false;
 	
 	var file, tableName
 	/**@type {Array<DataseedFile>} */
@@ -471,16 +482,18 @@ function runDataseedFromMedia(clearTablesNotInSeed, dataseedFile, dbNameToImport
 				zipContent.forEach(/**@param {plugins.file.JSFile} folderItem */ function(folderItem) {
 					if (folderItem.isFile() && folderItem.getName().match('.csv')) {
 						tableName = folderItem.getName().replace('.csv', '');
-						jsTable = databaseManager.getTable(mediaItem.dbName, tableName);
-						if (!jsTable) {
-							application.output("Skipping table: " + mediaItem.dbName + "." + tableName + " - table not found", LOGGINGLEVEL.DEBUG);
-							return;
-						}
-						if(deleteExistingData == true) {
-							if (isMicrosoftDB(mediaItem.dbName) || isProgressDB(mediaItem.dbName)) {
-								executeQuery(mediaItem.dbName,jsTable,['delete from ' + jsTable.getQuotedSQLName() + ';']);
-							} else {
-								executeQuery(mediaItem.dbName,jsTable,['TRUNCATE TABLE ' + jsTable.getQuotedSQLName() + ' CASCADE;']);
+						if(!tableName.includes('#')) {
+							jsTable = databaseManager.getTable(mediaItem.dbName, tableName);
+							if (!jsTable) {
+								application.output("Skipping table: " + mediaItem.dbName + "." + tableName + " - table not found", LOGGINGLEVEL.DEBUG);
+								return;
+							}
+							if(deleteExistingData == true) {
+								if (isMicrosoftDB(mediaItem.dbName) || isProgressDB(mediaItem.dbName)) {
+									executeQuery(mediaItem.dbName,jsTable,['delete from ' + jsTable.getQuotedSQLName() + ';']);
+								} else {
+									executeQuery(mediaItem.dbName,jsTable,['TRUNCATE TABLE ' + jsTable.getQuotedSQLName() + ' CASCADE;']);
+								}
 							}
 						}
 					}
@@ -492,7 +505,7 @@ function runDataseedFromMedia(clearTablesNotInSeed, dataseedFile, dbNameToImport
 			
 			zipContent.forEach(/**@param {plugins.file.JSFile} folderItem */ function(folderItem) {
 				if (folderItem.isFile() && folderItem.getName().match('.csv')) {
-					tableName = folderItem.getName().replace('.csv', '');
+					tableName = folderItem.getName().replace('.csv', '').split('#')[0];
 					importCsvFile(mediaItem.dbName, tableName, folderItem);
 					if(!seededTables[mediaItem.dbName]) {
 						seededTables[mediaItem.dbName] = new Array();
@@ -504,6 +517,13 @@ function runDataseedFromMedia(clearTablesNotInSeed, dataseedFile, dbNameToImport
 			if(executeInTransaction == true) {
 				databaseManager.commitTransaction(true,false);
 			}
+			
+			//Flush all tables after commit of data
+			seededTables[mediaItem.dbName].forEach(/**@param {String} table */ function(table) {
+				plugins.rawSQL.flushAllClientsCache(mediaItem.dbName,table)
+			})
+			
+			
 		}
 		
 		plugins.file.deleteFolder(mediaItem.unzipDirectory, false);	
@@ -548,7 +568,7 @@ function importCsvFile(dbName, tableName, file) {
 	var fullHeader = [];
 	var counter = 0;
 	var queryToExec = [];
-	var lineCount = scopes.svyIO.getLineCountForFile(file);
+	var lineCount = scopes.svyIO.getLineCountForFile(file) - 1;
 	var columnDiffs = [];
 	var table = databaseManager.getTable(dbName, tableName);
 	var quoteCharRegex = new RegExp(escapeRegExp('"') + escapeRegExp('"'), 'g');
@@ -698,7 +718,6 @@ function importCsvFile(dbName, tableName, file) {
 
 		application.output('Executed insert sql ' + counter + ' of ' + lineCount, LOGGINGLEVEL.DEBUG);
 	}
-	plugins.rawSQL.flushAllClientsCache(dbName, tableName);
 	application.output('Import of file: ' + dbName + ' / ' + tableName + ' -done-', LOGGINGLEVEL.INFO);
 
 	return true;
@@ -731,8 +750,10 @@ function executeQuery(dbName, table, queryToExec) {
 			postInsertSQL = 'SET IDENTITY_INSERT ' + table.getQuotedSQLName() + ' OFF;' + postInsertSQL;
 		}
 	} else if(isPostgresDB(dbName)) {
+		preInsertSQL += 'SET session_replication_role = replica;';
+		postInsertSQL += 'SET session_replication_role = DEFAULT;';
 		if(table.getRowIdentifierColumnNames().length > 0 && table.getColumn(table.getRowIdentifierColumnNames()[0]).getSequenceType() == JSColumn.DATABASE_SEQUENCE && table.getColumn(table.getRowIdentifierColumnNames()[0]).getType() == JSColumn.INTEGER) {
-			queryToExec.push("SELECT setval(pg_get_serial_sequence('" + table.getSQLName() + "', '"+ table.getColumn(table.getRowIdentifierColumnNames()[0]).getQuotedSQLName()+ "'), COALESCE(CAST(max(" + table.getColumn(table.getRowIdentifierColumnNames()[0]).getQuotedSQLName()+ ") AS INT), 1)) FROM " + table.getQuotedSQLName() + ";");
+			postInsertSQL += "SELECT setval(pg_get_serial_sequence('" + table.getSQLName() + "', '"+ table.getColumn(table.getRowIdentifierColumnNames()[0]).getQuotedSQLName()+ "'), COALESCE(CAST(max(" + table.getColumn(table.getRowIdentifierColumnNames()[0]).getQuotedSQLName()+ ") AS INT), 1)) FROM " + table.getQuotedSQLName() + ";";
 		}
 	} else if(isProgressDB(dbName)) {
 		// TODO Implement support to import into a Progress DB
