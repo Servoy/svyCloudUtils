@@ -6,6 +6,10 @@
 *metadata\
 *\.metadata\
 
+#sonarlint files#
+.sonarlint/
+.sonarlint\
+
 #resources files
 resources
 resources

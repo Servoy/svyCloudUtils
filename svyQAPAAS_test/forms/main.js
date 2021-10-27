@@ -70,6 +70,10 @@ function importSpecificDataseed(event) {
  */
 function createDataseedWithFilters(event) {
 	application.output('export started: ' + new Date())
+	var seedFile = scopes.svyDataSeed.createDataSeedFile('dataseed_one',null,false,[{fieldName: 'k_owner_id', value: '919738c0-ba66-435a-9c38-2b24d5933b6b', required: true}], null, null, null, ['vw%', 'temp_%']);
+	if(scopes.svySystem.isNGClient()) {
+		plugins.file.writeFile('sample_dataseed.zip',plugins.file.readFile(seedFile));
+	}
 	application.output('export done: ' + new Date())
 }
 
@@ -84,4 +88,32 @@ function createDataseedWithFilters(event) {
  */
 function executeDbUtilsVersionUpgrade(event) {
 	scopes.svyDeployUtils.runDBVersionUpgrade()
+}
+
+/**
+ * Perform the element onclick action.
+ *
+ * @param {JSEvent} event the event that triggered the action
+ *
+ * @protected
+ *
+ * @properties={typeid:24,uuid:"B0074A33-11B9-49D6-9801-7EA2793759CB"}
+ */
+function importNG(event) {
+	plugins.file.showFileOpenDialog(1,importDataNGContinue);
+}
+
+/**
+ * TODO generated, please specify type and doc for the params
+ * @param jsFiles
+ *
+ * @properties={typeid:24,uuid:"13F1320F-0D6F-4BAF-8281-4D7492D66451"}
+ */
+function importDataNGContinue(jsFiles) {
+	/** @type {plugins.file.JSFile} */
+	var jsFile = jsFiles[0];
+	
+	scopes.svyDataSeed.runDataseedFromMedia(false,jsFile,'dataseed_two',false,true);
+	plugins.dialogs.showInfoDialog('Info','Import finished...');
+	
 }

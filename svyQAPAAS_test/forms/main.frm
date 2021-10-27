@@ -74,6 +74,17 @@ typeid:7,
 uuid:"8AC06977-019E-4EAF-8B39-0C8C60EB7F1F"
 },
 {
+location:"5,90",
+onActionMethodID:"B0074A33-11B9-49D6-9801-7EA2793759CB",
+onDoubleClickMethodID:"-1",
+onRightClickMethodID:"-1",
+rolloverCursor:12,
+size:"145,20",
+text:"Import NG",
+typeid:7,
+uuid:"A7FE3A65-2A31-4D47-A7F7-4F887082D568"
+},
+{
 location:"5,65",
 onActionMethodID:"2682B94F-0EB8-408D-814B-2503C0E192F5",
 onDoubleClickMethodID:"-1",

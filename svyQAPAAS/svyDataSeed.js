@@ -325,7 +325,7 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFil
 			}
 			
 			dataset = null;
-		} while (offset < tableCount && offset < 100000); //TODO: LIMIT SHOULD BE REMOVED!!
+		} while (offset < tableCount);
 		fileWriter.close();
 		application.output('Export of table: ' + selectedDB + ' / ' + table + ' (rows: ' + offset + ') -done-');
 	}
@@ -353,11 +353,6 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFil
  * @properties={typeid:24,uuid:"561F6E1D-C532-4955-8C88-06EDD46DE974"}
  */
 function DataseedFile(file, dbName) {
-	/**
-	 * @protected 
-	 * @type {JSMedia|plugins.file.JSFile}
-	 */
-	this.file = file
 	/**
 	 * @public  
 	 * @type {String}
@@ -400,6 +395,13 @@ function DataseedFile(file, dbName) {
 	 * @type {plugins.file.JSFile}  
 	 */
 	this.unzipDirectory = null;
+	
+	/** 
+	 * @public 
+	 */
+	this.clearRemoteFileRef = function() {
+		this.remoteFile = null;
+	}
 }
 
 /**
@@ -460,7 +462,7 @@ function runDataseedFromMedia(clearTablesNotInSeed, dataseedFile, dbNameToImport
 			if(importFile.remoteFile) {
 				plugins.file.copyFile(importFile.remoteFile, file);
 			} else {
-				plugins.file.writeFile(file, importFile['getBytes']());
+				plugins.file.writeFile(file, importFile.getBytes());
 			}
 			importFile.unzipDirectory = scopes.svyIO.unzip(file);
 			 
@@ -471,13 +473,18 @@ function runDataseedFromMedia(clearTablesNotInSeed, dataseedFile, dbNameToImport
 				foldersToImport.push(importFile.unzipDirectory)
 			}
 			file = plugins.file.createFile(systemProperties.javaIoTmpdir + systemProperties.fileSeparator + importFile.dbName + systemProperties.fileSeparator + importFile.fileName);
-			plugins.file.writeFile(file, importFile['getBytes']());
+			plugins.file.writeFile(file, importFile.getBytes());
 		}
+		importFile.clearRemoteFileRef();
+		file = null;
 	}
 	
 	mediaList.forEach(/**@param {DataseedFile} mediaItem */ function(mediaItem) {
 		if (mediaItem.unzipDirectory && mediaItem.unzipDirectory.isDirectory()) {
 			var zipContent = plugins.file.getFolderContents(mediaItem.unzipDirectory);
+			zipContent.sort(function sortFunction(a, b) {
+			    return a.getName().localeCompare(b.getName())
+			})
 			for(var i = 1 ; i <= 5; i++) {
 				zipContent.forEach(/**@param {plugins.file.JSFile} folderItem */ function(folderItem) {
 					if (folderItem.isFile() && folderItem.getName().match('.csv')) {
@@ -502,11 +509,15 @@ function runDataseedFromMedia(clearTablesNotInSeed, dataseedFile, dbNameToImport
 			if(executeInTransaction == true) {
 				databaseManager.startTransaction();
 			}
-			
 			zipContent.forEach(/**@param {plugins.file.JSFile} folderItem */ function(folderItem) {
 				if (folderItem.isFile() && folderItem.getName().match('.csv')) {
 					tableName = folderItem.getName().replace('.csv', '').split('#')[0];
 					importCsvFile(mediaItem.dbName, tableName, folderItem);
+					
+					//Force clear JSFile Ref & sleep to give GC time
+					folderItem = null;
+					application.sleep(200);
+					
 					if(!seededTables[mediaItem.dbName]) {
 						seededTables[mediaItem.dbName] = new Array();
 					}
@@ -548,7 +559,7 @@ function runDataseedFromMedia(clearTablesNotInSeed, dataseedFile, dbNameToImport
 					}
 				}
 			}
-		})
+		});
 	}
 }
 
@@ -570,6 +581,7 @@ function importCsvFile(dbName, tableName, file) {
 	var queryToExec = [];
 	var lineCount = scopes.svyIO.getLineCountForFile(file) - 1;
 	var columnDiffs = [];
+	var hasMediaColumn = false;
 	var table = databaseManager.getTable(dbName, tableName);
 	var quoteCharRegex = new RegExp(escapeRegExp('"') + escapeRegExp('"'), 'g');
 	
@@ -664,6 +676,7 @@ function importCsvFile(dbName, tableName, file) {
 									return returnNum;
 									break;
 								case JSColumn.MEDIA:
+									hasMediaColumn = true; //Will force the sql execute to max 100 instead of 500
 									if (value) {
 										return "decode('" + value + "', 'base64')";
 									} else {
@@ -688,14 +701,17 @@ function importCsvFile(dbName, tableName, file) {
 						});
 
 						var query = 'INSERT INTO ' + table.getQuotedSQLName() + ' (' + header.join(', ') + ') VALUES (' + values.join(', ') + ');'
-
 						queryToExec.push(query);
-						if (counter % 500 == 0) {
+						query = null, values = null;
+						if (counter % (hasMediaColumn ? 10 : 500) == 0) {
 							if(!executeQuery(dbName,table,queryToExec)) {
 								application.output('FAILED TO INSERT insert sql ' + counter + ' of ' + lineCount, LOGGINGLEVEL.ERROR);
 							}
 
 							queryToExec = [];
+                            if(hasMediaColumn) {
+                                application.sleep(500);
+                            }
 							application.output('Executed insert sql ' + counter + ' of ' + lineCount, LOGGINGLEVEL.DEBUG);
 						}
 					}
@@ -710,12 +726,15 @@ function importCsvFile(dbName, tableName, file) {
 	application.output('Import of file: ' + dbName + ' / ' + tableName + ' -Started-', LOGGINGLEVEL.INFO);
 	
 	scopes.svyDataUtils.parseCSV(plugins.file.readTXTFile(file,'UTF-8'), {delimiter: ',', firstRowHasColumnNames: true, textQualifier: '"'}, importData);
+	//Give GC some time to clean
+	application.sleep(1000);
 	
 	if (queryToExec.length != 0) {
 		if(!executeQuery(dbName,table,queryToExec)) {
 			application.output('FAILED TO INSERT insert sql ' + counter + ' of ' + lineCount, LOGGINGLEVEL.ERROR);
 		}
-
+		
+		queryToExec = [];
 		application.output('Executed insert sql ' + counter + ' of ' + lineCount, LOGGINGLEVEL.DEBUG);
 	}
 	application.output('Import of file: ' + dbName + ' / ' + tableName + ' -done-', LOGGINGLEVEL.INFO);
