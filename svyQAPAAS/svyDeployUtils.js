@@ -7,7 +7,8 @@ function copyReportsToServer() {
 	var location = plugins.file.getDefaultUploadLocation().replace('uploads', '')
 	var mediaFiles = solutionModel.getMediaList();
 	application.output('Copying reports', LOGGINGLEVEL.DEBUG);
-	for each (var media in mediaFiles) {
+	for (var mediaIndex in mediaFiles) {
+		var media = mediaFiles[mediaIndex];
 		if (media.getName().match(/reports/) && (media.getName().match(/jrxml/) || media.getName().match(/jasper/))) {
 			plugins.file.deleteFile(location + scopes.svyIO.getFileSeperator() + media.getName());
 			var file = plugins.file.createFile(location + scopes.svyIO.getFileSeperator() + media.getName());
@@ -82,15 +83,22 @@ function runDBVersionUpgrade(versionTableName) {
 	var foundVersions = [];
 	/**@type {Array<parseMediaDBFile>} */
 	var foundRepeats = [];
+	/**@type {Array<String>} */
+	var allVersionsDBNames = [];
 
 	//Filter all the types and select matched on naming
-	for each (var media in medias) {
+	for (var mediaIndex in medias) {
+		var media = medias[mediaIndex];
 		var parsedFile = new parseMediaDBFile(media);
 		if (parsedFile.isValidFile()) {
 			if (parsedFile.type == DB_IMPORT_TYPE.VERSION) {
 				foundVersions.push(parsedFile);
 			} else {
 				foundRepeats.push(parsedFile);
+			}
+
+			if (allVersionsDBNames.indexOf(parsedFile.dbServer) == -1) {
+				allVersionsDBNames.push(parsedFile.dbServer);
 			}
 		}
 	}
@@ -99,34 +107,45 @@ function runDBVersionUpgrade(versionTableName) {
 	foundVersions.sort(sortVersion);
 	foundRepeats.sort(sortVersion);
 
-	var nextVersion = 0;
-	while (foundVersions.length > 0 || foundRepeats.length > 0) {
-		nextVersion++;
-		if (foundVersions.length > 0) {
-			var versionFile = foundVersions[0];
-			if (versionFile.version == nextVersion) {
-				for each (var dbServerName in getAllDBs(versionFile.dbServer)) {
-					createVersionTable(dbServerName, versionTableName);
-					var currentVersion = getCurrentVersion(dbServerName, versionTableName);
-					if (versionFile.version > currentVersion) {
-						if (!plugins.rawSQL.executeSQL(dbServerName, versionFile.getFileData())) {
-							throw new Error('Failed to run migration SQL FILE: ' + versionFile.name + ' \n' + plugins.rawSQL.getException());
-						}
-						setCurrentVersion(nextVersion, dbServerName, versionTableName);
-					}
-				}
-				foundVersions.shift();
-			}
+	for (var dbNameIndex in allVersionsDBNames) {
+		var currentDBVersionName = allVersionsDBNames[dbNameIndex];
+		var nextVersion = 0;
+		//Create 2 new arrays with only the sql files needed for this database
+		var foundVersionsForDBName = foundVersions.filter(/**@param {parseMediaDBFile} item */function(item) {
+			return item.dbServer == currentDBVersionName;
+		})
 
-			if (foundRepeats.length > 0) {
-				var repeatFile = foundRepeats[0];
-				if (repeatFile.version == nextVersion) {
-					for each (dbServerName in getAllDBs(repeatFile.dbServer)) {
-						if (!plugins.rawSQL.executeSQL(dbServerName, repeatFile.getFileData())) {
-							throw new Error('Failed to run migration SQL FILE: ' + versionFile.name + ' \n' + plugins.rawSQL.getException());
+		var foundRepeatsForDBName = foundRepeats.filter(/**@param {parseMediaDBFile} item */function(item) {
+			return item.dbServer == currentDBVersionName;
+		})
+		while (foundVersionsForDBName.length > 0 || foundRepeatsForDBName.length > 0) {
+			nextVersion++;
+			if (foundVersionsForDBName.length > 0) {
+				var versionFile = foundVersionsForDBName[0];
+				if (versionFile.version == nextVersion) {
+					for each (var dbServerName in getAllDBs(versionFile.dbServer)) {
+						createVersionTable(dbServerName, versionTableName);
+						var currentVersion = getCurrentVersion(dbServerName, versionTableName);
+						if (versionFile.version > currentVersion) {
+							if (!plugins.rawSQL.executeSQL(dbServerName, versionFile.getFileData())) {
+								throw new Error('Failed to run migration SQL FILE: ' + versionFile.name + ' \n' + plugins.rawSQL.getException());
+							}
+							setCurrentVersion(nextVersion, dbServerName, versionTableName);
 						}
 					}
-					foundRepeats.shift();
+					foundVersionsForDBName.shift();
+				}
+
+				if (foundRepeatsForDBName.length > 0) {
+					var repeatFile = foundRepeatsForDBName[0];
+					if (repeatFile.version == nextVersion) {
+						for each (dbServerName in getAllDBs(repeatFile.dbServer)) {
+							if (!plugins.rawSQL.executeSQL(dbServerName, repeatFile.getFileData())) {
+								throw new Error('Failed to run migration SQL FILE: ' + versionFile.name + ' \n' + plugins.rawSQL.getException());
+							}
+						}
+						foundRepeatsForDBName.shift();
+					}
 				}
 			}
 		}
