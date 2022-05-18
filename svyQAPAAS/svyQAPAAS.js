@@ -53,11 +53,11 @@ var SVN_BRANCH = '';
  * @properties={typeid:24,uuid:"B0693CE2-0663-45B7-BAFD-A265E79B3D08"}
  */
 function getJenkinsBuildNr() {
-	if(JENKINS_BUILDNR === 0) {
-		return null;
-	} else {
-		return JENKINS_BUILDNR;
-	}
+    if (JENKINS_BUILDNR === 0) {
+        return null;
+    } else {
+        return JENKINS_BUILDNR;
+    }
 }
 
 
@@ -68,11 +68,11 @@ function getJenkinsBuildNr() {
  * @properties={typeid:24,uuid:"1087F2E1-9D51-4767-B9FC-1083A79E84EF"}
  */
 function getJenkinsBuildDate() {
-	if(!JENKINS_BUILDDATE) {
-		return null;
-	} else {
-		return utils.parseDate(JENKINS_BUILDDATE,'dd-MM-yyyy HH:mm:ss');
-	}
+    if (!JENKINS_BUILDDATE) {
+        return null;
+    } else {
+        return utils.parseDate(JENKINS_BUILDDATE, 'dd-MM-yyyy HH:mm:ss');
+    }
 }
 
 /**
@@ -82,11 +82,11 @@ function getJenkinsBuildDate() {
  * @properties={typeid:24,uuid:"66254580-CAE7-418E-9B85-8AD29305D876"}
  */
 function getSvnRevision() {
-	if(!SVN_REVISION) {
-		return null;
-	} else {
-		return SVN_REVISION;
-	}
+    if (!SVN_REVISION) {
+        return null;
+    } else {
+        return SVN_REVISION;
+    }
 }
 
 
@@ -97,11 +97,11 @@ function getSvnRevision() {
  * @properties={typeid:24,uuid:"5FBD7DD1-BAF2-4665-8E36-B5039D68CFED"}
  */
 function getGitCommit() {
-	if(!GIT_COMMIT) {
-		return null;
-	} else {
-		return GIT_COMMIT;
-	}
+    if (!GIT_COMMIT) {
+        return null;
+    } else {
+        return GIT_COMMIT;
+    }
 }
 
 /**
@@ -111,11 +111,11 @@ function getGitCommit() {
  * @properties={typeid:24,uuid:"77BBE8A6-3A0C-470C-ADF3-1C2466A207E3"}
  */
 function getGitBranch() {
-	if(!GIT_BRANCH) {
-		return null;
-	} else {
-		return GIT_BRANCH;
-	}
+    if (!GIT_BRANCH) {
+        return null;
+    } else {
+        return GIT_BRANCH;
+    }
 }
 
 /**
@@ -125,9 +125,52 @@ function getGitBranch() {
  * @properties={typeid:24,uuid:"810BF566-35AC-4F61-B360-6ECCB2E2D86C"}
  */
 function getSVNBranch() {
-	if(!SVN_BRANCH) {
-		return null;
-	} else {
-		return SVN_BRANCH;
-	}
+    if (!SVN_BRANCH) {
+        return null;
+    } else {
+        return SVN_BRANCH;
+    }
+}
+
+/**
+ * @protected 
+ * @param {Array<{name: String, value: String|Number}>} payloadData
+ *
+ * @properties={typeid:24,uuid:"63A8AAB7-7996-4102-8DBB-E65E0E8E24F0"}
+ */
+function ws_create(payloadData) {
+    var serverUUID = null;
+    var shutdownTime = 5;
+
+    if (payloadData) {
+        for (var index = 0; index < payloadData.length; index++) {
+            var obj = payloadData[index];
+            var name = obj.name;
+            if (name == 'serverUUID') {
+                serverUUID = obj.value;
+            } else if (name == 'shutdownTime') {
+                shutdownTime = obj.value;
+            }
+        }
+
+        if (serverUUID && serverUUID == application.getServerUUID()) {
+            var allClients = plugins.clientmanager.getConnectedClients();
+            for (var i = 0; i < allClients.length; i++) {
+                var client = allClients[i];
+                //First we kill all the batch processors and all the headless clients
+                if (client.getApplicationType() == APPLICATION_TYPES.HEADLESS_CLIENT && client.getClientID() != security.getClientID()) {
+                    plugins.clientmanager.shutDownClient(client.getClientID());
+                }
+            }
+            var message = "The server will be restarted for maintenance in " + shutdownTime + " minutes!!\nPlease save your changes and logoff";
+            plugins.clientmanager.sendMessageToAllClients(message);
+
+            //We now force kill the current client to be sure that one isn't blocking
+            plugins.clientmanager.shutDownClient(security.getClientID(), true);
+        } else {
+            throw 404;
+        }
+    } else {
+        throw 404;
+    }
 }
