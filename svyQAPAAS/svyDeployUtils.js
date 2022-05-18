@@ -87,8 +87,8 @@ function runDBVersionUpgrade(versionTableName) {
     var foundRepeats = [];
     /**@type {Array<String>} */
     var allVersionsDBNames = [];
-    /**@type {Array<String>} */
-    var dbServerName = [];
+    /**@type {String} */
+    var dbServerName;
 
     //Filter all the types and select matched on naming
     for (var mediaIndex in medias) {
