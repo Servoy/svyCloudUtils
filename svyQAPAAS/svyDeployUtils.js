@@ -7,7 +7,7 @@ function copyReportsToServer() {
 	var location = plugins.file.getDefaultUploadLocation().replace('uploads', '')
 	var mediaFiles = solutionModel.getMediaList();
 	application.output('Copying reports', LOGGINGLEVEL.DEBUG);
-	for (var mediaIndex in mediaFiles) {
+	for(var mediaIndex in mediaFiles) {
 		var media = mediaFiles[mediaIndex];
 		if (media.getName().match(/reports/) && (media.getName().match(/jrxml/) || media.getName().match(/jasper/))) {
 			plugins.file.deleteFile(location + scopes.svyIO.getFileSeperator() + media.getName());
@@ -36,6 +36,8 @@ function removeAllTablesFromDatabase(database) {
 
 	if (!application.isInDeveloper()) {
 		plugins.maintenance.getServer(database).reloadDataModel();
+	} else {
+		plugins.dialogs.showWarningDialog('Refresh','Please refresh all databases and do a resync');
 	}
 }
 
@@ -85,6 +87,8 @@ function runDBVersionUpgrade(versionTableName) {
 	var foundRepeats = [];
 	/**@type {Array<String>} */
 	var allVersionsDBNames = [];
+    /**@type {Array<String>} */
+    var dbServerName = [];
 
 	//Filter all the types and select matched on naming
 	for (var mediaIndex in medias) {
@@ -96,8 +100,8 @@ function runDBVersionUpgrade(versionTableName) {
 			} else {
 				foundRepeats.push(parsedFile);
 			}
-
-			if (allVersionsDBNames.indexOf(parsedFile.dbServer) == -1) {
+			
+			if(allVersionsDBNames.indexOf(parsedFile.dbServer) == -1) {
 				allVersionsDBNames.push(parsedFile.dbServer);
 			}
 		}
@@ -106,15 +110,16 @@ function runDBVersionUpgrade(versionTableName) {
 	//Sort everything on versionnumber
 	foundVersions.sort(sortVersion);
 	foundRepeats.sort(sortVersion);
+	
 
-	for (var dbNameIndex in allVersionsDBNames) {
+	for(var dbNameIndex in allVersionsDBNames) {
 		var currentDBVersionName = allVersionsDBNames[dbNameIndex];
 		var nextVersion = 0;
 		//Create 2 new arrays with only the sql files needed for this database
 		var foundVersionsForDBName = foundVersions.filter(/**@param {parseMediaDBFile} item */function(item) {
 			return item.dbServer == currentDBVersionName;
 		})
-
+		
 		var foundRepeatsForDBName = foundRepeats.filter(/**@param {parseMediaDBFile} item */function(item) {
 			return item.dbServer == currentDBVersionName;
 		})
@@ -123,7 +128,8 @@ function runDBVersionUpgrade(versionTableName) {
 			if (foundVersionsForDBName.length > 0) {
 				var versionFile = foundVersionsForDBName[0];
 				if (versionFile.version == nextVersion) {
-					for each (var dbServerName in getAllDBs(versionFile.dbServer)) {
+					for (var dbVersionNameIndex in getAllDBs(versionFile.dbServer)) {
+						dbServerName = getAllDBs(versionFile.dbServer)[dbVersionNameIndex];
 						createVersionTable(dbServerName, versionTableName);
 						var currentVersion = getCurrentVersion(dbServerName, versionTableName);
 						if (versionFile.version > currentVersion) {
@@ -135,11 +141,12 @@ function runDBVersionUpgrade(versionTableName) {
 					}
 					foundVersionsForDBName.shift();
 				}
-
+	
 				if (foundRepeatsForDBName.length > 0) {
 					var repeatFile = foundRepeatsForDBName[0];
 					if (repeatFile.version == nextVersion) {
-						for each (dbServerName in getAllDBs(repeatFile.dbServer)) {
+						for(var dbRepeatNameIndex in getAllDBs(repeatFile.dbServer)) {
+							dbServerName = getAllDBs(repeatFile.dbServer)[dbRepeatNameIndex];
 							if (!plugins.rawSQL.executeSQL(dbServerName, repeatFile.getFileData())) {
 								throw new Error('Failed to run migration SQL FILE: ' + versionFile.name + ' \n' + plugins.rawSQL.getException());
 							}
