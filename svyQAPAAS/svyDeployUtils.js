@@ -205,8 +205,8 @@ function createVersionTable(serverName, tableName) {
 }
 
 /**
- * @private
- * @param {String} [serverName]
+ * @public 
+ * @param {String} serverName
  * @param {String} [tableName]
  *
  * @return {Number}
@@ -215,17 +215,19 @@ function createVersionTable(serverName, tableName) {
 function getCurrentVersion(serverName, tableName) {
     var currentVersion = 0;
     if (serverName && tableName) {
-        /**@type {QBSelect} */
-        var sql = datasources.db[serverName][tableName].createSelect();
-        sql.result.add(sql.columns['versionnumber']);
-
-        //Get all data, sorting on int can be different based on DB settings
-        var ds = databaseManager.getDataSetByQuery(sql, -1);
-        for (var i = 1; i <= ds.getMaxRowIndex(); i++) {
-            if (currentVersion <= parseInt(ds.getValue(i, 1))) {
-                currentVersion = ds.getValue(i, 1);
-            }
-        }
+    	if(databaseManager.getTable(serverName,tableName)) {
+	        /**@type {QBSelect} */
+	        var sql = databaseManager.createSelect(databaseManager.getDataSource(serverName,tableName));
+	        sql.result.add(sql.columns['versionnumber']);
+	
+	        //Get all data, sorting on int can be different based on DB settings
+	        var ds = databaseManager.getDataSetByQuery(sql, -1);
+	        for (var i = 1; i <= ds.getMaxRowIndex(); i++) {
+	            if (currentVersion <= parseInt(ds.getValue(i, 1))) {
+	                currentVersion = ds.getValue(i, 1);
+	            }
+	        }
+    	}
     } else {
         currentVersion = parseInt(getServoyProperty(serverName.toUpperCase() + '.DB_VERSION') || getServoyProperty('DB_VERSION') || '0');
     }
@@ -243,7 +245,7 @@ function getCurrentVersion(serverName, tableName) {
 function setCurrentVersion(versionNumber, serverName, tableName) {
     if (serverName && tableName) {
         /**@type {JSFoundSet} */
-        var fs = datasources.db[serverName][tableName].getFoundSet();
+        var fs = databaseManager.getFoundSet(serverName,tableName);
         if (fs) {
             var rec = fs.getRecord(fs.newRecord());
             rec['versionnumber'] = versionNumber;
@@ -315,7 +317,7 @@ function parseMediaDBFile(media) {
      * @type {String}
      * @public
      */
-    this.dbServer = this.isValidFile() ? this.name.replace(/database-migration\/(V|R)__(\d*)__/, '').split('__')[0] : null;;
+    this.dbServer = this.isValidFile() ? this.name.replace(/database-migration\/(V|R)__(\d*)__/, '').split('__')[0] : null;
 
     /**
      * @return {String}
