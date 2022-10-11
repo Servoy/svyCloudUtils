@@ -76,10 +76,13 @@ var DB_IMPORT_TYPE = {
  * @public
  *
  * @param {String} [versionTableName] tableName to store the version data, when this is set it will not be stored in the servoy.properties file
+ * @param {String} [migrationFilesFolder] Media foldername where all the migration files should be located. Default: database-migration
  *
  * @properties={typeid:24,uuid:"0AAF4E9B-20E0-440E-ADB9-96CE939A5AE9"}
  */
-function runDBVersionUpgrade(versionTableName) {
+function runDBVersionUpgrade(versionTableName, migrationFilesFolder) {
+	migrationFilesFolder = migrationFilesFolder||'database-migration';
+	
     var medias = solutionModel.getMediaList();
     /**@type {Array<parseMediaDBFile>} */
     var foundVersions = [];
@@ -93,7 +96,7 @@ function runDBVersionUpgrade(versionTableName) {
     //Filter all the types and select matched on naming
     for (var mediaIndex in medias) {
         var media = medias[mediaIndex];
-        var parsedFile = new parseMediaDBFile(media);
+        var parsedFile = new parseMediaDBFile(media, migrationFilesFolder);
         if (parsedFile.isValidFile()) {
             if (parsedFile.type == DB_IMPORT_TYPE.VERSION) {
                 foundVersions.push(parsedFile);
@@ -260,10 +263,10 @@ function setCurrentVersion(versionNumber, serverName, tableName) {
  * @protected
  * @constructor
  * @param {JSMedia} media
- * @properties={typeid:24,uuid:"DF868CC5-02DC-4969-9808-E8085043FD5A"}
+ * @param {String} migrationFilesFolder
+ * @properties={typeid:24,uuid:"AF97E9C4-4FE4-4C99-95E1-1B6F4C51EAE0"}
  */
-function parseMediaDBFile(media) {
-
+function parseMediaDBFile(media, migrationFilesFolder) {
     /**
      * @type {JSMedia}
      * @protected
@@ -281,10 +284,10 @@ function parseMediaDBFile(media) {
      * @public
      */
     this.isValidFile = function () {
-        if (this.name.match(/^database-migration/)) {
-            if (this.name.match(/database-migration\/(V|R)__/)) {
-                if (this.name.match(/database-migration\/(V|R)__(\d*)__/)) {
-                    var dbName = this.name.replace(/database-migration\/(V|R)__(\d*)__/, '').split('__')[0];
+        if (this.name.match(new RegExp("^"+ migrationFilesFolder))) {
+            if (this.name.match(new RegExp(migrationFilesFolder+"/(V|R)__"))) {
+                if (this.name.match(new RegExp(migrationFilesFolder+"/(V|R)__(\\d*)__"))) {
+                    var dbName = this.name.replace(new RegExp(migrationFilesFolder+"/(V|R)__(\\d*)__"), '').split('__')[0];
                     if (datasources.db[dbName]) {
                         return true;
                     } else {
@@ -305,19 +308,19 @@ function parseMediaDBFile(media) {
      * @type {Number}
      * @public
      */
-    this.version = this.isValidFile() ? parseInt(this.name.match(/database-migration\/(V|R)__(\d*)__/)[0].replace(/\D/g, '')) : null;
+    this.version = this.isValidFile() ? parseInt(this.name.match(new RegExp(migrationFilesFolder + "/(V|R)__(\\d*)__"))[0].replace(/\D/g, '')) : null;
 
     /**
      * @type {String}
      * @public
      */
-    this.type = this.isValidFile() ? (this.name.match(/database-migration\/V__/) ? DB_IMPORT_TYPE.VERSION : DB_IMPORT_TYPE.REPEAT) : null;
+    this.type = this.isValidFile() ? (this.name.match(new RegExp(migrationFilesFolder + "/V__")) ? DB_IMPORT_TYPE.VERSION : DB_IMPORT_TYPE.REPEAT) : null;
 
     /**
      * @type {String}
      * @public
      */
-    this.dbServer = this.isValidFile() ? this.name.replace(/database-migration\/(V|R)__(\d*)__/, '').split('__')[0] : null;
+    this.dbServer = this.isValidFile() ? this.name.replace(new RegExp(migrationFilesFolder + "/(V|R)__(\\d*)__"), '').split('__')[0] : null;
 
     /**
      * @return {String}
