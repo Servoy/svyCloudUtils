@@ -10,8 +10,8 @@ function copyReportsToServer() {
     for (var mediaIndex in mediaFiles) {
         var media = mediaFiles[mediaIndex];
         if (media.getName().match(/reports/) && (media.getName().match(/jrxml/) || media.getName().match(/jasper/))) {
-            plugins.file.deleteFile(location + scopes.svyIO.getFileSeperator() + media.getName());
-            var file = plugins.file.createFile(location + scopes.svyIO.getFileSeperator() + media.getName());
+            plugins.file.deleteFile(location + java.io.File.separator + media.getName());
+            var file = plugins.file.createFile(location + java.io.File.separator + media.getName());
             plugins.file.createFolder(file.getPath().replace(file.getName(), ''));
             plugins.file.writeFile(file, media.bytes);
             application.output('Writing report file: ' + file.getAbsolutePath(), LOGGINGLEVEL.DEBUG);
