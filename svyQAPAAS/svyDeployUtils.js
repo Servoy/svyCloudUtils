@@ -251,8 +251,12 @@ function setCurrentVersion(versionNumber, serverName, tableName) {
         var fs = databaseManager.getFoundSet(serverName,tableName);
         if (fs) {
             var rec = fs.getRecord(fs.newRecord());
+            rec['id'] = application.getUUID().toString();
             rec['versionnumber'] = versionNumber;
-            databaseManager.saveData(rec);
+            if(!databaseManager.saveData(rec)) {
+            	application.output('Could not save new dbVersion, reason: ' + databaseManager.getFailedRecords()[0].exception.getMessage(), LOGGINGLEVEL.ERROR)
+            }
+            fs.dispose();
         }
     } else {
         setServoyProperty(serverName.toUpperCase() + '.DB_VERSION', versionNumber.toString());
@@ -277,7 +281,7 @@ function parseMediaDBFile(media, migrationFilesFolder) {
      * @type {String}
      * @public
      */
-    this.name = this.mediaFile.getName();
+    this.name = this.mediaFile.getName()||'';
 
     /**
      * @type {Boolean}
