@@ -943,7 +943,7 @@ function executeQuery(dbName, table, queryToExec) {
             try {
                 queryToExec.unshift(preInsertSQL);
                 queryToExec.push(postInsertSQL);
-                if (!plugins.rawSQL.executeSQL(dbName, queryToExec.join('\n'))) {
+                if (!plugins.rawSQL.executeSQL(dbName, '/*IGNORE-SQL-TIMING-LOGGING*/\n' + queryToExec.join('\n'))) {
                     application.output('Failed to run the following query: `' + queryToExec + '`, reason: ' + plugins.rawSQL.getException().getMessage(), LOGGINGLEVEL.ERROR);
                 }
             } finally {
