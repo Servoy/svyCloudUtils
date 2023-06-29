@@ -126,8 +126,8 @@ function buildSelectSQL(dbName, jsTable, additionalFilters, columnNameRegex) {
     }
 
     //Parse to string & args array
-    var dbSQL = databaseManager.getSQL(sql, false);
-    var queryArgs = databaseManager.getSQLParameters(sql, false) || [];
+    var dbSQL = sql.getSQL(false);
+    var queryArgs = sql.getSQLParameters(false) || [];
 
     var fieldsToReplace = [];
     //Replace of dateTime with timezone based in sql needs to be done after, can not be done in qbselect

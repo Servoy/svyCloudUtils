@@ -12,11 +12,5 @@ mimeType:"application/x-sql",
 name:"database-migration/V__1__example__firstVersion.sql",
 typeid:37,
 uuid:"4C2D880B-5382-4F06-9DCD-3C8118AFEFA1"
-},
-{
-encapsulation:0,
-name:"dataseeds/.DS_Store",
-typeid:37,
-uuid:"8E44F040-50C4-4C2A-BAFC-40DA163D7B40"
 }
 ]
