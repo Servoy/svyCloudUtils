@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <projectDescription>
-	<name>svyQAPAAS_test</name>
+	<name>svyCloudUtils</name>
 	<comment></comment>
 	<projects>
-		<project>resources</project>
 	</projects>
 	<buildSpec>
 		<buildCommand>

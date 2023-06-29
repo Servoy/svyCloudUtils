@@ -1,5 +1,5 @@
 firstFormID:"AD1FA74C-EA38-4A42-A068-BFE632E547E3",
 i18nDataSource:"db:/example_data/i18n_messages",
-modulesNames:"svyQAPAAS",
+modulesNames:"svyCloudUtils",
 typeid:43,
 uuid:"FA2657F0-93FF-478B-AD19-6D5322590E69"

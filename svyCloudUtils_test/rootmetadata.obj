@@ -1,6 +1,6 @@
-fileVersion:54,
+fileVersion:56,
 mustAuthenticate:false,
-name:"svyQAPAAS_test",
+name:"svyCloudUtils_test",
 solutionType:1,
 typeid:43,
 uuid:"FA2657F0-93FF-478B-AD19-6D5322590E69"

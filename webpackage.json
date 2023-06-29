@@ -1,0 +1,12 @@
+{
+    "name":"svyCloudUtils",
+    "displayName":"svyCloudUtils",
+    "packageType": "Solution",
+    "icon": "https://raw.githubusercontent.com/Servoy/servoy-extra-components/master/servoy.png",
+    "description": "Wide range of Servoy Cloud utility methods for Servoy solutions",
+    "wikiUrl": "https://github.com/Servoy/svyCloudUtils/wiki",
+    "sourceUrl" : "https://github.com/Servoy/svyCloudUtils",
+    "releases" : [
+        {"version":"2022.3.0","url":"https://github.com/Servoy/svyCloudUtils/releases/download/v2023.3.0/svyCloudUtils.servoy", "servoy-version":"2022.3.0", "dependency":"svyUtils#>=2022.3.1"}
+     ]
+}

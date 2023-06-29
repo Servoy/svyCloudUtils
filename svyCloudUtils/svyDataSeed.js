@@ -7,7 +7,7 @@ var DB_CACHE = {
     postgres: {},
     mssql: {},
     openedge: {}
-};
+}
 
 /**
  * @protected
@@ -34,16 +34,17 @@ function getWorkspacePath() {
 
 /**
  * @public
- * @param {String} [customPathToSVYQapaas]
+ * @param {String} [customPathToSvyCloudUtils]
  * @param {Boolean} [returnDataseedFile] when true, dataseed will not be written to workspace but return as jsFile
  * @param {Boolean} [runFullTableRecalc] optional boolean to do a full table recalc when having storedcalcs.. will be heavy when there is a lot of data
  * @param {Boolean} [noZip] optional when true the export files will not be zipped, the folder with  plain csv will be part of the repository (do not use with large dataseed files)
  * @param {Array<String>} [excludeTableNames] Array with table names to filter for export, it has support for % as wildcard
+ * @param {RegExp} [columnNameRegex] optional regex check to improve performance of column data check, csv can't have linebreaks etc, so we convert data when we find that in the content. When this regex matches on columnname it will ignore that check
  * @return {plugins.file.JSFile} zipped dataseed file
  *
  * @properties={typeid:24,uuid:"B89674BA-49DE-4B32-829B-2181B69D44A5"}
  */
-function createDataSeedFiles(customPathToSVYQapaas, returnDataseedFile, runFullTableRecalc, noZip, excludeTableNames) {
+function createDataSeedFiles(customPathToSvyCloudUtils, returnDataseedFile, runFullTableRecalc, noZip, excludeTableNames, columnNameRegex) {
     var databases = [];
     datasources['db']['allnames'].forEach(function (item) {
         if (item != 'repository_server') {
@@ -51,7 +52,7 @@ function createDataSeedFiles(customPathToSVYQapaas, returnDataseedFile, runFullT
         }
     })
     var selectedDB = plugins.dialogs.showSelectDialog('Generate dataseed', 'Select DB to generate dataseed from', databases);
-    return createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFile, null, runFullTableRecalc, null, noZip, excludeTableNames);
+    return createDataSeedFile(selectedDB, customPathToSvyCloudUtils, returnDataseedFile, null, runFullTableRecalc, null, noZip, excludeTableNames, columnNameRegex);
 }
 
 /**
@@ -62,7 +63,7 @@ function createDataSeedFiles(customPathToSVYQapaas, returnDataseedFile, runFullT
  */
 function removeExistingDataSeedFile(dataseedToRemove, customDataseedPath) {
     var workspacePath = application.isInDeveloper() ? getWorkspacePath() : scopes.svySystem.getSystemProperties().javaIoTmpdir;
-    var dbFolderPathArray = [workspacePath, 'svyQAPAAS', 'medias', 'dataseeds'];
+    var dbFolderPathArray = [workspacePath, 'svyCloudUtils', 'medias', 'dataseeds'];
     if (customDataseedPath) {
         dbFolderPathArray = [customDataseedPath, 'medias', 'dataseeds'];
     }
@@ -81,22 +82,23 @@ function removeExistingDataSeedFile(dataseedToRemove, customDataseedPath) {
  * @param {String} dbName
  * @param {JSTable} jsTable
  * @param {Array<{fieldName: String, value: String|Number, [required]:Boolean}>} [additionalFilters]
+ * @param {RegExp} [columnNameRegex]
  * @return {{query: String, cntQuery: QBSelect, args: Array<*>, largeDataFields: Boolean, base64Fields:Array<String>}|Boolean}
  * @properties={typeid:24,uuid:"F6B909B6-76E3-48A2-9A57-9728EC843BB4"}
  */
-function buildSelectSQL(dbName, jsTable, additionalFilters) {
+function buildSelectSQL(dbName, jsTable, additionalFilters, columnNameRegex) {
     var largeTxtFields = false;
     var dataProviderIds = jsTable.getColumnNames();
     var base64Fields = [];
     var sql = databaseManager.createSelect(jsTable.getDataSource());
-    for (var d = 0; d < dataProviderIds.length; d++) {
-        if (jsTable.getColumn(dataProviderIds[d]).getType() != JSColumn.MEDIA || isPostgresDB(dbName)) {
-            sql.result.add(sql.columns[dataProviderIds[d]]);
-        } else if (jsTable.getColumn(dataProviderIds[d]).getType() == JSColumn.MEDIA && isMicrosoftDB(dbName)) {
+    for (var dpidindex = 0; dpidindex < dataProviderIds.length; dpidindex++) {
+        if (jsTable.getColumn(dataProviderIds[dpidindex]).getType() != JSColumn.MEDIA || isPostgresDB(dbName)) {
+            sql.result.add(sql.columns[dataProviderIds[dpidindex]]);
+        } else if (jsTable.getColumn(dataProviderIds[dpidindex]).getType() == JSColumn.MEDIA && isMicrosoftDB(dbName)) {
             application.output("Found media column, media conversion isn't supported currently for MSSQL Server. Column will be skipped", LOGGINGLEVEL.WARNING)
         }
 
-        if (jsTable.getColumn(dataProviderIds[d]).getLength() > 10000 || jsTable.getColumn(dataProviderIds[d]).getType() == JSColumn.MEDIA) {
+        if (jsTable.getColumn(dataProviderIds[dpidindex]).getLength() > 10000 || jsTable.getColumn(dataProviderIds[dpidindex]).getType() == JSColumn.MEDIA) {
             largeTxtFields = true;
         }
     }
@@ -130,33 +132,42 @@ function buildSelectSQL(dbName, jsTable, additionalFilters) {
     var fieldsToReplace = [];
     //Replace of dateTime with timezone based in sql needs to be done after, can not be done in qbselect
     if (isPostgresDB(dbName)) {
-        for (d = 0; d < dataProviderIds.length; d++) {
+        for (var dpidindexps = 0; dpidindexps < dataProviderIds.length; dpidindexps++) {
             //When timestamp make it return UTC so it will be imported correctly
-            if (jsTable.getColumn(dataProviderIds[d]).getType() == JSColumn.DATETIME) {
-                fieldsToReplace.push("timezone('UTC', timezone('UTC'," + jsTable.getSQLName() + "." + dataProviderIds[d] + ")) AS " + dataProviderIds[d]);
-                dbSQL = dbSQL.replace((jsTable.getSQLName() + '.' + dataProviderIds[d]), '%%' + (fieldsToReplace.length - 1) + '%%')
-            } else if (jsTable.getColumn(dataProviderIds[d]).getType() == JSColumn.MEDIA) {
-                fieldsToReplace.push("encode(" + jsTable.getSQLName() + "." + dataProviderIds[d] + ", 'base64') AS " + dataProviderIds[d]);
-                dbSQL = dbSQL.replace((jsTable.getSQLName() + '.' + dataProviderIds[d]), '%%' + (fieldsToReplace.length - 1) + '%%');
-                base64Fields.push(dataProviderIds[d]);
-            } else if (jsTable.getColumn(dataProviderIds[d]).getType() == JSColumn.TEXT && (Packages.com.servoy.j2db.J2DBGlobals.getServiceProvider().getSolution().getServer(dbName).getTableBySqlname(jsTable.getSQLName()).getColumn(dataProviderIds[d]).getTextualPropertyInfo() || '').match('StringSerializer')) {
-                base64Fields.push(dataProviderIds[d]);
-            } else if (jsTable.getColumn(dataProviderIds[d]).getType() == JSColumn.TEXT && !jsTable.getColumn(dataProviderIds[d]).hasFlag(JSColumn.UUID_COLUMN)) {
-                //TODO: Improve this to also include the filters
-                var lineSQL = 'SELECT ' + jsTable.getSQLName() + "." + dataProviderIds[d] + ' FROM ' + jsTable.getSQLName() + ' WHERE POSITION( chr(44) in ' + jsTable.getSQLName() + "." + dataProviderIds[d] + ')<>0 OR POSITION( chr(13) in ' + jsTable.getSQLName() + "." + dataProviderIds[d] + ')<>0 OR POSITION( chr(10) in ' + jsTable.getSQLName() + "." + dataProviderIds[d] + ')<>0';
-                if (databaseManager.getDataSetByQuery(jsTable.getServerName(), lineSQL, [], 1).getMaxRowIndex()) {
-                    application.output('Will encrypted column: ' + dataProviderIds[d] + ' into base64, it has LF or CR or , in it.. what are special things in CSV');
-                    base64Fields.push(dataProviderIds[d]);
-                }
+            if (jsTable.getColumn(dataProviderIds[dpidindexps]).getType() == JSColumn.DATETIME) {
+                fieldsToReplace.push("timezone('UTC', timezone('UTC'," + jsTable.getSQLName() + "." + dataProviderIds[dpidindexps] + ")) AS " + dataProviderIds[dpidindexps]);
+                dbSQL = dbSQL.replace((jsTable.getSQLName() + '.' + dataProviderIds[dpidindexps]), '%%' + (fieldsToReplace.length - 1) + '%%')
+            } else if (jsTable.getColumn(dataProviderIds[dpidindexps]).getType() == JSColumn.MEDIA) {
+                fieldsToReplace.push("encode(" + jsTable.getSQLName() + "." + dataProviderIds[dpidindexps] + ", 'base64') AS " + dataProviderIds[dpidindexps]);
+                dbSQL = dbSQL.replace((jsTable.getSQLName() + '.' + dataProviderIds[dpidindexps]), '%%' + (fieldsToReplace.length - 1) + '%%');
+                base64Fields.push(dataProviderIds[dpidindexps]);
+            } else if (jsTable.getColumn(dataProviderIds[dpidindexps]).getType() == JSColumn.TEXT && (Packages.com.servoy.j2db.J2DBGlobals.getServiceProvider().getSolution().getServer(dbName).getTableBySqlname(jsTable.getSQLName()).getColumn(dataProviderIds[dpidindexps]).getTextualPropertyInfo() || '').match('StringSerializer')) {
+                base64Fields.push(dataProviderIds[dpidindexps]);
+            } else if (jsTable.getColumn(dataProviderIds[dpidindexps]).getType() == JSColumn.TEXT && !jsTable.getColumn(dataProviderIds[dpidindexps]).hasFlag(JSColumn.UUID_COLUMN)) {
+            	if(!columnNameRegex || !columnNameRegex.test(jsTable.getSQLName())) {
+	                var lineSQL = 'SELECT ' + jsTable.getSQLName() + "." + dataProviderIds[dpidindexps] + ' FROM ' + jsTable.getSQLName() + ' WHERE (POSITION( chr(44) in ' + jsTable.getSQLName() + "." + dataProviderIds[dpidindexps] + ')<>0 OR POSITION( chr(13) in ' + jsTable.getSQLName() + "." + dataProviderIds[dpidindexps] + ')<>0 OR POSITION( chr(10) in ' + jsTable.getSQLName() + "." + dataProviderIds[dpidindexps] + ')<>0)';
+	                if (additionalFilters) {
+	                	for (var additionalFilterIndexToAdd in additionalFilters) {
+	                        var additionalFilter = additionalFilters[additionalFilterIndexToAdd];
+	                        if (jsTable.getColumn(additionalFilter.fieldName)) {
+	                        	lineSQL += ' AND ' + jsTable.getColumn(additionalFilter.fieldName).getSQLName() + " = '" + additionalFilter.value + "'";
+	                        }
+                        }
+	                }
+	                if (databaseManager.getDataSetByQuery(jsTable.getServerName(), lineSQL, [], 1).getMaxRowIndex()) {
+	                    application.output('Will encrypted column: ' + dataProviderIds[dpidindexps] + ' into base64, it has LF or CR or , in it.. what are special things in CSV');
+	                    base64Fields.push(dataProviderIds[dpidindexps]);
+	                }
+            	}
             }
         }
         dbSQL += ' LIMIT ? OFFSET ?';
     } else if (isMicrosoftDB(dbName)) {
-        for (d = 0; d < dataProviderIds.length; d++) {
+        for (var dpidindexms = 0; dpidindexms < dataProviderIds.length; dpidindexms++) {
             //When timestamp make it return UTC so it will be imported correctly
-            if (jsTable.getColumn(dataProviderIds[d]).getType() == JSColumn.DATETIME) {
-                fieldsToReplace.push(jsTable.getSQLName() + "." + dataProviderIds[d] + " AT TIME ZONE 'UTC' AS " + dataProviderIds[d]);
-                dbSQL = dbSQL.replace((jsTable.getSQLName() + '.' + dataProviderIds[d]), '%%' + (fieldsToReplace.length - 1) + '%%')
+            if (jsTable.getColumn(dataProviderIds[dpidindexms]).getType() == JSColumn.DATETIME) {
+                fieldsToReplace.push(jsTable.getSQLName() + "." + dataProviderIds[dpidindexms] + " AT TIME ZONE 'UTC' AS " + dataProviderIds[dpidindexms]);
+                dbSQL = dbSQL.replace((jsTable.getSQLName() + '.' + dataProviderIds[dpidindexms]), '%%' + (fieldsToReplace.length - 1) + '%%')
             }
         }
 
@@ -211,7 +222,7 @@ function addOffsetArgs(dbName, args, offset, largeDataField, limitTableCount) {
 /**
  * @public
  * @param {String} selectedDB
- * @param {String} [customPathToSVYQapaas]
+ * @param {String} [customPathToSvyCloudUtils]
  * @param {Boolean} [returnDataseedFile] when true, dataseed will not be written to workspace but return as jsFile
  * @param {Array<{fieldName: String, value: String|Number, [required]:Boolean}>} [additionalFilters] when given the query will add this to the where class (when field exists)
  * 			Fieldname: The DB Field that needs to be filtered
@@ -221,11 +232,12 @@ function addOffsetArgs(dbName, args, offset, largeDataField, limitTableCount) {
  * @param {Number} [limitTableCount] optional integer value to limit the number of records returned per table, useful for getting sample data
  * @param {Boolean} [noZip] optional when true the export files will not be zipped, the folder with  plain csv will be part of the repository (do not use with large dataseed files)
  * @param {Array<String>} [excludeTableNames] Array with table names to filter for export, it has support for % as wildcard.
+ * @param {RegExp} [columnNameRegex] optional regex check to improve performance of column data check, csv can't have linebreaks etc, so we convert data when we find that in the content. When this regex matches on columnname it will ignore that check
  * @return {plugins.file.JSFile} zipped dataseed file
  *
  * @properties={typeid:24,uuid:"67C8AFB5-1DE1-43D0-BFA9-4AFBDFFB50E3"}
  */
-function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFile, additionalFilters, runFullTableRecalc, limitTableCount, noZip, excludeTableNames) {
+function createDataSeedFile(selectedDB, customPathToSvyCloudUtils, returnDataseedFile, additionalFilters, runFullTableRecalc, limitTableCount, noZip, excludeTableNames, columnNameRegex) {
     var zip = null;
     if (!selectedDB) {
         return zip;
@@ -242,14 +254,14 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFil
 
     var workspacePath = returnDataseedFile ? getWorkspacePath() : scopes.svySystem.getSystemProperties().javaIoTmpdir;
     var tables = databaseManager.getTableNames(selectedDB);
-    var dbFolderPath = [workspacePath, 'svyQAPAAS', 'medias', 'dataseeds'].join(scopes.svyIO.getFileSeperator());
+    var dbFolderPath = [workspacePath, 'svyCloudUtils', 'medias', 'dataseeds'].join(scopes.svyIO.getFileSeperator());
     var tempFolder = [scopes.svySystem.getSystemProperties().javaIoTmpdir, 'temp_export'].join(scopes.svyIO.getFileSeperator());
-    if (customPathToSVYQapaas) {
-        dbFolderPath = [customPathToSVYQapaas, 'medias', 'dataseeds'].join(scopes.svyIO.getFileSeperator());
+    if (customPathToSvyCloudUtils) {
+        dbFolderPath = [customPathToSvyCloudUtils, 'medias', 'dataseeds'].join(scopes.svyIO.getFileSeperator());
         tempFolder = [scopes.svySystem.getSystemProperties().javaIoTmpdir, 'temp_export'].join(scopes.svyIO.getFileSeperator());
     }
 
-    removeExistingDataSeedFile(selectedDB, customPathToSVYQapaas);
+    removeExistingDataSeedFile(selectedDB, customPathToSvyCloudUtils);
     plugins.file.createFolder(dbFolderPath);
     plugins.file.deleteFolder(tempFolder, false);
     plugins.file.createFolder(tempFolder);
@@ -297,7 +309,7 @@ function createDataSeedFile(selectedDB, customPathToSVYQapaas, returnDataseedFil
             continue
         }
 
-        var queryObj = buildSelectSQL(selectedDB, jsTable, additionalFilters);
+        var queryObj = buildSelectSQL(selectedDB, jsTable, additionalFilters, columnNameRegex);
         if (queryObj instanceof Boolean && !queryObj) {
             application.output("Skipping table: " + jsTable.getDataSource() + " additional filter added with required flag column not found", LOGGINGLEVEL.DEBUG);
             continue
@@ -939,7 +951,6 @@ function executeQuery(dbName, table, queryToExec) {
     Packages.com.servoy.j2db.J2DBGlobals.getServiceProvider().getScheduledExecutor().execute(new java.lang.Runnable({
         run: function () {
             hasAsyncCall = true;
-            //		var sqlRunTime = new Date();
             try {
                 queryToExec.unshift(preInsertSQL);
                 queryToExec.push(postInsertSQL);
@@ -947,7 +958,6 @@ function executeQuery(dbName, table, queryToExec) {
                     application.output('Failed to run the following query: `' + queryToExec + '`, reason: ' + plugins.rawSQL.getException().getMessage(), LOGGINGLEVEL.ERROR);
                 }
             } finally {
-                //			application.output('SQL Running time: ' + (new Date().getTime() - sqlRunTime.getTime()) + 'ms', LOGGINGLEVEL.DEBUG)
                 hasAsyncCall = false;
             }
             return true;

@@ -52,11 +52,14 @@ function importSpecificDataseed(event) {
 	scopes.svyDataSeed.getExistingDataseeds().forEach(/**@param {scopes.svyDataSeed.DataseedFile} item */ function(item) {
 		dataseeds.push(item.fileName);
 	});
-	
+	application.output('Import started: ' + new Date())
 	var selectedDataseed = plugins.dialogs.showSelectDialog('Import dataseed', 'Select dataseed to import', dataseeds);
 	if(selectedDataseed) {
-		scopes.svyDataSeed.runDataseedFromMedia(true, plugins.file.convertToJSFile('/private/var/folders/w9/7w99w11j7n98tqbrxj3t4lf00000gn/T/svyQAPAAS/medias/dataseeds/really_large.zip'), 'smalldb')
+		scopes.svyDataSeed.runDataseedFromMedia(false, plugins.file.convertToJSFile(selectedDataseed), 'dataseed_two', true, true)
+		application.output(' DONE ')
+		application.output('Import done: ' + new Date())
 	}
+
 }
 
 /**
@@ -70,11 +73,12 @@ function importSpecificDataseed(event) {
  */
 function createDataseedWithFilters(event) {
 	application.output('export started: ' + new Date())
-	var seedFile = scopes.svyDataSeed.createDataSeedFile('dataseed_one',null,false,[{fieldName: 'k_owner_id', value: '919738c0-ba66-435a-9c38-2b24d5933b6b', required: true}], null, null, null, ['vw%', 'temp_%']);
-	if(scopes.svySystem.isNGClient()) {
+	var seedFile = scopes.svyDataSeed.createDataSeedFile('dataseed_one',null,false,[{fieldName: 'owner', value: 'servoybv', required: true}], null, null, null, ['vw%', 'temp_%'], new RegExp(/_id$/));
+	application.output('export done: ' + new Date())
+	if(scopes.svySystem.isNGClient() || scopes.svySystem.isTINGClient()) {
+		
 		plugins.file.writeFile('sample_dataseed.zip',plugins.file.readFile(seedFile));
 	}
-	application.output('export done: ' + new Date())
 }
 
 /**
@@ -104,7 +108,6 @@ function importNG(event) {
 }
 
 /**
- * TODO generated, please specify type and doc for the params
  * @param jsFiles
  *
  * @properties={typeid:24,uuid:"13F1320F-0D6F-4BAF-8281-4D7492D66451"}
@@ -113,7 +116,7 @@ function importDataNGContinue(jsFiles) {
 	/** @type {plugins.file.JSFile} */
 	var jsFile = jsFiles[0];
 	
-	scopes.svyDataSeed.runDataseedFromMedia(false,jsFile,'dataseed_two',false,true);
+	scopes.svyDataSeed.runDataseedFromMedia(false,jsFile,'dataseed_two',false,false);
 	plugins.dialogs.showInfoDialog('Info','Import finished...');
 	
 }

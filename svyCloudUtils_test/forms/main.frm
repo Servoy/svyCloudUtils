@@ -1,7 +1,9 @@
-customProperties:"formComponent:false",
+customProperties:"formComponent:false,\
+useCssPosition:true",
 encapsulation:108,
 items:[
 {
+cssPosition:"144,-1,-1,5,145,20",
 location:"5,144",
 onActionMethodID:"8C3E7D33-328E-48BF-BB91-AF0A5D91BFEC",
 onDoubleClickMethodID:"-1",
@@ -19,6 +21,7 @@ typeid:19,
 uuid:"01F5BD65-5AAB-47B3-96A3-24F3155D28B1"
 },
 {
+cssPosition:"65,-1,-1,155,197,20",
 location:"155,65",
 onActionMethodID:"AAD14F44-F5E7-4B43-B1D8-FEC7D111E580",
 onDoubleClickMethodID:"-1",
@@ -30,6 +33,7 @@ typeid:7,
 uuid:"11F41EEA-4BC0-4C0B-B1CA-825C2732D32F"
 },
 {
+cssPosition:"40,-1,-1,5,145,20",
 location:"5,40",
 onActionMethodID:"944130C6-3A41-4598-86E2-95EEB22AC51C",
 onDoubleClickMethodID:"-1",
@@ -41,6 +45,7 @@ typeid:7,
 uuid:"23D9073E-CAC3-45E9-9595-64AAE4D07C8C"
 },
 {
+cssPosition:"15,-1,-1,155,197,20",
 location:"155,15",
 onActionMethodID:"FC3C298B-3769-46DE-9CDB-529D5A9E2FD6",
 onDoubleClickMethodID:"-1",
@@ -52,6 +57,7 @@ typeid:7,
 uuid:"52046BEE-8830-4518-B4D6-C4D57D31A36D"
 },
 {
+cssPosition:"40,-1,-1,155,197,20",
 location:"155,40",
 onActionMethodID:"0D6F7486-BABD-4A08-8C56-496D9CCE3D06",
 onDoubleClickMethodID:"-1",
@@ -63,6 +69,7 @@ typeid:7,
 uuid:"5B399C51-2741-43C4-BB4A-F1211576C3D1"
 },
 {
+cssPosition:"15,-1,-1,5,145,20",
 location:"5,15",
 onActionMethodID:"0D6F7486-BABD-4A08-8C56-496D9CCE3D06",
 onDoubleClickMethodID:"-1",
@@ -74,6 +81,7 @@ typeid:7,
 uuid:"8AC06977-019E-4EAF-8B39-0C8C60EB7F1F"
 },
 {
+cssPosition:"90,-1,-1,5,145,20",
 location:"5,90",
 onActionMethodID:"B0074A33-11B9-49D6-9801-7EA2793759CB",
 onDoubleClickMethodID:"-1",
@@ -85,6 +93,7 @@ typeid:7,
 uuid:"A7FE3A65-2A31-4D47-A7F7-4F887082D568"
 },
 {
+cssPosition:"65,-1,-1,5,145,20",
 location:"5,65",
 onActionMethodID:"2682B94F-0EB8-408D-814B-2503C0E192F5",
 onDoubleClickMethodID:"-1",
