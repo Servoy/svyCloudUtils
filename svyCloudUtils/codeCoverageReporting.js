@@ -34,6 +34,7 @@ var initScope = (function(){
 		__coverage__.__coverage__ = {};
 	}
 	__coverage__ = __coverage__.__coverage__;
+	
 	initForCalcsAndEntityMethods();
 	fixBaseLine();
 }());
@@ -76,6 +77,14 @@ function fixBaseLine() {
 	}
 	
 	plugins.file.writeTXTFile(filePath, JSON.stringify(data));
+}
+
+/**
+ * @public 
+ * @properties={typeid:24,uuid:"FAE15130-F5AA-431A-A9CA-A689F37CF1D3"}
+ */
+function initCodeCoverage() {
+	application.output('initCodeCoverage called in the onSolutionOpen to setup all the vars', LOGGINGLEVEL.INFO)
 }
 
 /**
