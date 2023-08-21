@@ -143,7 +143,7 @@ function buildSelectSQL(dbName, jsTable, additionalFilters, columnNameRegex) {
                 base64Fields.push(dataProviderIds[dpidindexps]);
             } else if (jsTable.getColumn(dataProviderIds[dpidindexps]).getType() == JSColumn.TEXT && (Packages.com.servoy.j2db.J2DBGlobals.getServiceProvider().getSolution().getServer(dbName).getTableBySqlname(jsTable.getSQLName()).getColumn(dataProviderIds[dpidindexps]).getTextualPropertyInfo() || '').match('StringSerializer')) {
                 base64Fields.push(dataProviderIds[dpidindexps]);
-            } else if (jsTable.getColumn(dataProviderIds[dpidindexps]).getType() == JSColumn.TEXT && !jsTable.getColumn(dataProviderIds[dpidindexps]).hasFlag(JSColumn.UUID_COLUMN)) {
+            } else if (jsTable.getColumn(dataProviderIds[dpidindexps]).getType() == JSColumn.TEXT && !jsTable.getColumn(dataProviderIds[dpidindexps]).hasFlag(JSColumn.UUID_COLUMN) && Packages.com.servoy.j2db.J2DBGlobals.getServiceProvider().getSolution().getServer(dbName).getTableBySqlname(jsTable.getSQLName()).getColumn(dataProviderIds[dpidindexps]).getColumnType().getSqlType() != 2000) {
             	if(!columnNameRegex || !columnNameRegex.test(jsTable.getSQLName())) {
 	                var lineSQL = 'SELECT ' + jsTable.getSQLName() + "." + dataProviderIds[dpidindexps] + ' FROM ' + jsTable.getSQLName() + ' WHERE (POSITION( chr(44) in ' + jsTable.getSQLName() + "." + dataProviderIds[dpidindexps] + ')<>0 OR POSITION( chr(13) in ' + jsTable.getSQLName() + "." + dataProviderIds[dpidindexps] + ')<>0 OR POSITION( chr(10) in ' + jsTable.getSQLName() + "." + dataProviderIds[dpidindexps] + ')<>0)';
 	                if (additionalFilters) {
