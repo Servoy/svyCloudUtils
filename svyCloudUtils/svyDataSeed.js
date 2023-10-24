@@ -125,6 +125,12 @@ function buildSelectSQL(dbName, jsTable, additionalFilters, columnNameRegex) {
         }
     }
 
+    //Instead of LIMIT & OFFSET we use sort
+    //UUID Will be removed from the argument list
+    if(!isProgressDB(dbName)) {
+    	sql.where.add(sql.columns[jsTable.getRowIdentifierColumnNames()[0]].gt(application.getUUID()));
+    }
+    
     //Parse to string & args array
     var dbSQL = sql.getSQL(false);
     var queryArgs = sql.getSQLParameters(false) || [];
@@ -135,7 +141,7 @@ function buildSelectSQL(dbName, jsTable, additionalFilters, columnNameRegex) {
         for (var dpidindexps = 0; dpidindexps < dataProviderIds.length; dpidindexps++) {
             //When timestamp make it return UTC so it will be imported correctly
             if (jsTable.getColumn(dataProviderIds[dpidindexps]).getType() == JSColumn.DATETIME) {
-                fieldsToReplace.push("timezone('UTC', timezone('UTC'," + jsTable.getSQLName() + "." + dataProviderIds[dpidindexps] + ")) AS " + dataProviderIds[dpidindexps]);
+                fieldsToReplace.push("timezone('UTC'," + jsTable.getSQLName() + "." + dataProviderIds[dpidindexps] + ") AS " + dataProviderIds[dpidindexps]);
                 dbSQL = dbSQL.replace((jsTable.getSQLName() + '.' + dataProviderIds[dpidindexps]), '%%' + (fieldsToReplace.length - 1) + '%%')
             } else if (jsTable.getColumn(dataProviderIds[dpidindexps]).getType() == JSColumn.MEDIA) {
                 fieldsToReplace.push("encode(" + jsTable.getSQLName() + "." + dataProviderIds[dpidindexps] + ", 'base64') AS " + dataProviderIds[dpidindexps]);
@@ -161,7 +167,7 @@ function buildSelectSQL(dbName, jsTable, additionalFilters, columnNameRegex) {
             	}
             }
         }
-        dbSQL += ' LIMIT ? OFFSET ?';
+        dbSQL += ' LIMIT ?';
     } else if (isMicrosoftDB(dbName)) {
         for (var dpidindexms = 0; dpidindexms < dataProviderIds.length; dpidindexms++) {
             //When timestamp make it return UTC so it will be imported correctly
@@ -171,12 +177,16 @@ function buildSelectSQL(dbName, jsTable, additionalFilters, columnNameRegex) {
             }
         }
 
-        dbSQL += ' OFFSET ? ROWS FETCH NEXT ? ROWS ONLY;';
+        dbSQL += ' OFFSET 0 ROWS FETCH NEXT ? ROWS ONLY;';
     } else if (!isProgressDB(dbName)) { // OFFSET AND FETCH for Progress DB is added when running the query
         // Unsupported BD
         return null;
     }
 
+    //Remove the dummy uuid for the where > then pk
+    if(!isProgressDB(dbName)) {
+    	queryArgs.pop();
+    }
     //Doing replace at the and / in 2 steps to fix issue with fields that match 2 times because of naming.
     fieldsToReplace.forEach(function (item, index) {
         dbSQL = dbSQL.replace('%%' + index + '%%', item);
@@ -211,10 +221,10 @@ function addOffsetArgs(dbName, args, offset, largeDataField, limitTableCount) {
     if (limitTableCount) {
         limitValue = Math.min(limitValue, limitTableCount);
     }
-    if (isPostgresDB(dbName)) {
-        return args.concat([limitValue, offset])
-    } else if (isMicrosoftDB(dbName) || isProgressDB(dbName)) {
-        return args.concat([offset, limitValue]);
+    if (isPostgresDB(dbName) || isMicrosoftDB(dbName)) {
+        return args.concat([limitValue])
+    } else if (isProgressDB(dbName)) {
+    	return args.concat([offset, limitValue]);
     } else {
         return null;
     }
@@ -303,27 +313,39 @@ function createDataSeedFile(selectedDB, customPathToSvyCloudUtils, returnDatasee
 
         if (jsTable.isMetadataTable()) {
             application.output("Skipping metadata table: " + jsTable.getDataSource(), LOGGINGLEVEL.DEBUG);
-            continue
+            continue;
         } else if (Packages.com.servoy.j2db.J2DBGlobals.getServiceProvider().getSolution().getI18nDataSource() == jsTable.getDataSource()) {
             application.output("Skipping i18n table: " + jsTable.getDataSource(), LOGGINGLEVEL.DEBUG);
-            continue
+            continue;
+        }
+
+        if(jsTable.getRowIdentifierColumnNames().length > 1) {
+        	application.output('Skipping table: ' + jsTable.getDataSource() + ' multi PK tables are not supported', LOGGINGLEVEL.WARNING);
+        	continue;
         }
 
         var queryObj = buildSelectSQL(selectedDB, jsTable, additionalFilters, columnNameRegex);
         if (queryObj instanceof Boolean && !queryObj) {
             application.output("Skipping table: " + jsTable.getDataSource() + " additional filter added with required flag column not found", LOGGINGLEVEL.DEBUG);
-            continue
+            continue;
         }
-
+        
         var tableCount = databaseManager.getDataSetByQuery(queryObj.cntQuery, 1).getValue(1, 1);
         if (limitTableCount) {
             tableCount = Math.min(tableCount, limitTableCount);
         }
 
         var offset = 0;
+        var lastQueryResultPK;
+		if(jsTable.getColumn(jsTable.getRowIdentifierColumnNames()[0]).getType() != JSColumn.UUID_COLUMN && jsTable.getColumn(jsTable.getRowIdentifierColumnNames()[0]).getType() != 12) {
+			lastQueryResultPK = '';
+		} else {
+			lastQueryResultPK = application.getUUID('00000000-0000-0000-0000-00000000000')
+		}
         var exportFile = plugins.file.convertToJSFile(tempFolder + scopes.svyIO.getFileSeperator() + jsTable.getSQLName() + '.csv');
         var fileWriter = new scopes.svyIO.BufferedWriter(exportFile, true);
         var numberOfFileCounter = 1;
+        var timeTrackingTable = new Date();
         application.output('Export of table: ' + selectedDB + ' / ' + table + ' (rows: ' + tableCount + ') -start-');
         if (runFullTableRecalc) {
             var hasStoredCalcs = false;
@@ -351,7 +373,11 @@ function createDataSeedFile(selectedDB, customPathToSvyCloudUtils, returnDatasee
         do {
             var queryTime = new Date();
             /** @type {Array} */
-            var args = addOffsetArgs(selectedDB, queryObj.args, offset, queryObj.largeDataFields, limitTableCount);
+            var args = JSON.parse(JSON.stringify(queryObj.args));
+            if(!isProgressDB(selectedDB)) {
+        		args.push(lastQueryResultPK);
+            }
+            args = addOffsetArgs(selectedDB, args, offset, queryObj.largeDataFields, limitTableCount);
             /** @type {String} */
             var query = queryObj.query;
 
@@ -361,10 +387,15 @@ function createDataSeedFile(selectedDB, customPathToSvyCloudUtils, returnDatasee
                 query += ' OFFSET ' + args[args.length - 2] + ' ROWS FETCH NEXT ' + args[args.length - 1] + ' ROWS ONLY';
                 args.splice(args.length - 2, 2);
             }
-
             var dataset = databaseManager.getDataSetByQuery(selectedDB, query, args, -1);
             var csvHeader = (offset == 0 ? true : false);
             offset += dataset.getMaxRowIndex();
+    		if(jsTable.getColumn(jsTable.getRowIdentifierColumnNames()[0]).getType() != JSColumn.UUID_COLUMN && jsTable.getColumn(jsTable.getRowIdentifierColumnNames()[0]).getType() != 12) {
+    			lastQueryResultPK = dataset.getValue(dataset.getMaxRowIndex(), 1);
+    		} else {
+    			lastQueryResultPK = application.getUUID(dataset.getValue(dataset.getMaxRowIndex(), 1))
+    		}
+    		
             if (queryObj.base64Fields.length) {
                 /**@type {Array<String>} */
                 var fields = dataset.getColumnNames();
@@ -397,7 +428,7 @@ function createDataSeedFile(selectedDB, customPathToSvyCloudUtils, returnDatasee
 
         } while (offset < tableCount);
         fileWriter.close();
-        application.output('Export of table: ' + selectedDB + ' / ' + table + ' (rows: ' + tableCount + ') -done-');
+        application.output('Export of table: ' + selectedDB + ' / ' + table + ' (rows: ' + tableCount + ', totalTime: ' + (new Date().getTime() - timeTrackingTable.getTime()) + 'ms) -done-');
     }
 
     if (plugins.file.convertToJSFile(tempFolder).listFiles().length > 0) {
