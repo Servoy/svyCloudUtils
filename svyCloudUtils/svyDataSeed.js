@@ -17,6 +17,12 @@ var DB_CACHE = {
 var hasAsyncCall = false;
 
 /**
+ * @protected 
+ * @properties={typeid:35,uuid:"374F753E-86A9-4518-A67A-E571F20A9AB3",variableType:-4}
+ */
+var servoyVersionNumber = utils.stringToNumber(application.getVersion().split('.').map(function(value) {return (value.length < 2 ? ("0" + value) : value)}).join(''),'.');
+
+/**
  * @private
  * @return {String}
  *
@@ -337,10 +343,14 @@ function createDataSeedFile(selectedDB, customPathToSvyCloudUtils, returnDatasee
 
         var offset = 0;
         var lastQueryResultPK;
-		if(jsTable.getColumn(jsTable.getRowIdentifierColumnNames()[0]).getType() != JSColumn.UUID_COLUMN && jsTable.getColumn(jsTable.getRowIdentifierColumnNames()[0]).getType() != 12) {
+		if(jsTable.getColumn(jsTable.getRowIdentifierColumnNames()[0]).getType() != JSColumn.UUID_COLUMN && !jsTable.getColumn(jsTable.getRowIdentifierColumnNames()[0]).hasFlag(JSColumn.UUID_COLUMN)) {
 			lastQueryResultPK = '';
 		} else {
-			lastQueryResultPK = application.getUUID('00000000-0000-0000-0000-00000000000')
+			if(servoyVersionNumber <= 20230600) {
+				lastQueryResultPK = application.getUUID('00000000-0000-0000-0000-00000000000').toString()
+			} else {
+				lastQueryResultPK = application.getUUID('00000000-0000-0000-0000-00000000000')
+			}
 		}
         var exportFile = plugins.file.convertToJSFile(tempFolder + scopes.svyIO.getFileSeperator() + jsTable.getSQLName() + '.csv');
         var fileWriter = new scopes.svyIO.BufferedWriter(exportFile, true);
@@ -390,10 +400,14 @@ function createDataSeedFile(selectedDB, customPathToSvyCloudUtils, returnDatasee
             var dataset = databaseManager.getDataSetByQuery(selectedDB, query, args, -1);
             var csvHeader = (offset == 0 ? true : false);
             offset += dataset.getMaxRowIndex();
-    		if(jsTable.getColumn(jsTable.getRowIdentifierColumnNames()[0]).getType() != JSColumn.UUID_COLUMN && jsTable.getColumn(jsTable.getRowIdentifierColumnNames()[0]).getType() != 12) {
-    			lastQueryResultPK = dataset.getValue(dataset.getMaxRowIndex(), 1);
+    		if(jsTable.getColumn(jsTable.getRowIdentifierColumnNames()[0]).getType() != JSColumn.UUID_COLUMN && !jsTable.getColumn(jsTable.getRowIdentifierColumnNames()[0]).getType() != JSColumn.TEXT) {
+    			lastQueryResultPK = dataset.getValue(dataset.getMaxRowIndex(), dataset.getColumnNames().indexOf(jsTable.getRowIdentifierColumnNames()[0]) + 1);
     		} else {
-    			lastQueryResultPK = application.getUUID(dataset.getValue(dataset.getMaxRowIndex(), 1))
+    			if(servoyVersionNumber <= 20230600) {
+    				lastQueryResultPK = application.getUUID(dataset.getValue(dataset.getMaxRowIndex(), dataset.getColumnNames().indexOf(jsTable.getRowIdentifierColumnNames()[0]) + 1)).toString()
+    			} else {
+    				lastQueryResultPK = application.getUUID(dataset.getValue(dataset.getMaxRowIndex(), dataset.getColumnNames().indexOf(jsTable.getRowIdentifierColumnNames()[0]) + 1))
+    			}
     		}
     		
             if (queryObj.base64Fields.length) {
