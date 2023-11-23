@@ -3,7 +3,7 @@
  * @public
  * @properties={typeid:24,uuid:"D9BBFECF-49BF-4F62-B2D8-A13B1234C5DB"}
  */
- function copyReportsToServer() {
+function copyReportsToServer() {
 	var location = plugins.file.getDefaultUploadLocation().replace('uploads', '')
 	var mediaFiles = solutionModel.getMediaList();
 	application.output('Copying reports', LOGGINGLEVEL.DEBUG);
@@ -136,7 +136,7 @@ function runDBVersionUpgrade(versionTableName, migrationFilesFolder) {
 						var currentVersion = getCurrentVersion(dbServerName, versionTableName);
 						if (versionFile.version > currentVersion) {
 							if (!plugins.rawSQL.executeSQL(dbServerName, '/*IGNORE-SQL-TIMING-LOGGING*/\n' + versionFile.getFileData())) {
-								throw new Error('Failed to run migration SQL FILE: ' + versionFile.name + ' \n' + plugins.rawSQL.getException());
+								throw new Error('Failed to run version migration SQL FILE: ' + versionFile.name + ' \n' + plugins.rawSQL.getException());
 							}
 							setCurrentVersion(nextVersion, dbServerName, versionTableName);
 						}
@@ -149,7 +149,7 @@ function runDBVersionUpgrade(versionTableName, migrationFilesFolder) {
 					if (repeatFile.version == nextVersion) {
 						getAllDBs(repeatFile.dbServer).forEach(function(dbServerName) {
 							if (!plugins.rawSQL.executeSQL(dbServerName, '/*IGNORE-SQL-TIMING-LOGGING*/\n' + repeatFile.getFileData())) {
-								throw new Error('Failed to run migration SQL FILE: ' + versionFile.name + ' \n' + plugins.rawSQL.getException());
+								throw new Error('Failed to run repeat migration SQL FILE: ' + repeatFile.name + ' \n' + plugins.rawSQL.getException());
 							}
 						})
 						foundRepeatsForDBName.shift();
@@ -229,6 +229,7 @@ function getCurrentVersion(serverName, tableName) {
 				}
 			}
 		} else {
+			application.output("Couldn't find the existing version table. DB Version will be 0.")
 			return 0;
 		}
 	} else {
@@ -343,6 +344,7 @@ function parseMediaDBFile(media, migrationFilesFolder) {
 	Object.seal(this);
 	return this;
 }
+
 /**
  * @private
  * @param {parseMediaDBFile} a
