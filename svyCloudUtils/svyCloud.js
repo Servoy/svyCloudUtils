@@ -47,6 +47,20 @@ var GIT_BRANCH = '';
 var SVN_BRANCH = '';
 
 /**
+ * All supported Servoy Cloud Environment types
+ * @public 
+ * @properties={typeid:35,uuid:"9E9CFC02-D483-444B-9CBC-EABA6077528B",variableType:-4}
+ */
+var CLOUD_ENVIRONMENT_TYPES = {
+	PRODUCTION: 'prod',
+	PRE_PRODUCTION: 'preprod',
+	USER_ACCEPTANCE: 'uat',
+	DEVELOP: 'dev',
+	DEMO: 'demo',
+	E2E: 'e2e'
+}
+
+/**
  * @public 
  * @return {Number}
  * 
@@ -59,7 +73,6 @@ function getJenkinsBuildNr() {
         return JENKINS_BUILDNR;
     }
 }
-
 
 /**
  * @public 
@@ -88,7 +101,6 @@ function getSvnRevision() {
         return SVN_REVISION;
     }
 }
-
 
 /**
  * @public 
@@ -130,4 +142,23 @@ function getSVNBranch() {
     } else {
         return SVN_BRANCH;
     }
+}
+
+/**
+ * Function returning the current Environment type when running in Servoy Cloud.
+ * Developer will always return type `dev`
+ * @public 
+ * @return {CLOUD_ENVIRONMENT_TYPES|String}
+ * @properties={typeid:24,uuid:"3FBCA3C7-8F13-4A6F-8D00-762E9B9D8EFF"}
+ */
+function getCurrentEnvironment() {
+	if(application.isInDeveloper()) {
+		return CLOUD_ENVIRONMENT_TYPES.DEVELOP;
+	} else {
+		var currentEnv = scopes.svyDeployUtils.getEnvironmentProperty('ENVIRONMENT');
+		if(currentEnv && Object.keys(CLOUD_ENVIRONMENT_TYPES).includes(currentEnv.toLowerCase())) {
+			return currentEnv.toLowerCase();
+		}
+	}
+	return CLOUD_ENVIRONMENT_TYPES.DEVELOP;
 }
