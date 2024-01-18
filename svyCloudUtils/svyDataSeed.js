@@ -38,6 +38,30 @@ function getWorkspacePath() {
 }
 
 /**
+ * @protected 
+ * @type {{value: Number, size: String}}
+ * @properties={typeid:35,uuid:"04D55C2F-7533-4746-AC75-D8C0EFDA37BC",variableType:-4}
+ */
+var currentWorkMem = null
+
+/**
+ * @public 
+ * @param {String} dbName
+ * @return {{value: Number, size: String}}
+ * @properties={typeid:24,uuid:"673DEB5E-2DCB-4061-8D02-778A82A43FD7"}
+ */
+function getCurrentWorkMem(dbName) {
+	if(!currentWorkMem) {
+        var workMem = databaseManager.getDataSetByQuery(dbName,"SELECT current_setting('work_mem');",[],-1).getValue(1,1);
+        var workMemValue = parseInt(workMem.split(/\D+/)[0]);
+        var workMemSize = workMem.split(/\d+/)[1];
+        
+        currentWorkMem =  {value: workMemValue, size: workMemSize};
+	}
+	return currentWorkMem;
+}
+
+/**
  * @public
  * @param {String} [customPathToSvyCloudUtils]
  * @param {Boolean} [returnDataseedFile] when true, dataseed will not be written to workspace but return as jsFile
@@ -986,8 +1010,10 @@ function executeQuery(dbName, table, queryToExec) {
             postInsertSQL += 'SET IDENTITY_INSERT ' + table.getQuotedSQLName() + ' OFF;'
         }
     } else if (isPostgresDB(dbName)) {
+    	preInsertSQL += "SET WORK_MEM='" + (getCurrentWorkMem(dbName).value * 2) + getCurrentWorkMem(dbName).size +"';\n"
         preInsertSQL += 'SET session_replication_role = replica;\n BEGIN;\n';
         postInsertSQL += '\nCOMMIT;\nSET session_replication_role = DEFAULT;';
+        postInsertSQL += '\nRESET WORK_MEM;'
         if (table.getRowIdentifierColumnNames().length > 0 && table.getColumn(table.getRowIdentifierColumnNames()[0]).getSequenceType() == JSColumn.DATABASE_SEQUENCE && table.getColumn(table.getRowIdentifierColumnNames()[0]).getType() == JSColumn.INTEGER) {
             var sequenceName;
             var dsSeq = databaseManager.getDataSetByQuery(table.getServerName(), "SELECT pg_get_serial_sequence('" + table.getSQLName() + "', '" + table.getColumn(table.getRowIdentifierColumnNames()[0]).getQuotedSQLName() + "')", null, 1)
