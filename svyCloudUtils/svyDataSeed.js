@@ -691,7 +691,10 @@ function runDataseedFromMedia(clearTablesNotInSeed, dataseedFile, dbNameToImport
             }
 
             if (executeInTransaction) {
-                databaseManager.commitTransaction(true, false);
+                if(!databaseManager.commitTransaction(true, false)) {
+                	application.output('The data import transaction failed, data insert will be reverted.', LOGGINGLEVEL.ERROR);
+                	databaseManager.rollbackTransaction();
+                }
             }
 
             //Flush all tables after commit of data
@@ -1049,7 +1052,11 @@ function executeQuery(dbName, table, queryToExec) {
                 queryToExec.unshift(preInsertSQL);
                 queryToExec.push(postInsertSQL);
                 if (!plugins.rawSQL.executeSQL(dbName, '/*IGNORE-SQL-TIMING-LOGGING*/\n' + queryToExec.join('\n'))) {
-                    application.output('Failed to run the following query: `' + queryToExec + '`, reason: ' + plugins.rawSQL.getException().getMessage(), LOGGINGLEVEL.ERROR);
+                    if(application.isInDeveloper()) {
+                		application.output('Failed to run the following query: `' + queryToExec + '`, reason: ' + plugins.rawSQL.getException().getMessage(), LOGGINGLEVEL.ERROR);
+                	} else {
+                		application.output('Failed to run query, reason: ' + plugins.rawSQL.getException().getMessage(), LOGGINGLEVEL.ERROR);
+                	}
                 }
             } finally {
                 hasAsyncCall = false;
