@@ -137,6 +137,8 @@ function runDBVersionUpgrade(versionTableName, migrationFilesFolder) {
 						if (versionFile.version > currentVersion) {
 							if (!plugins.rawSQL.executeSQL(dbServerName, '/*IGNORE-SQL-TIMING-LOGGING*/\n' + versionFile.getFileData())) {
 								throw new Error('Failed to run version migration SQL FILE: ' + versionFile.name + ' \n' + plugins.rawSQL.getException());
+							} else {
+								getTableNamesDataChangesAndTriggerFlush(versionFile.getFileData(), dbServerName)
 							}
 							setCurrentVersion(nextVersion, dbServerName, versionTableName);
 						}
@@ -150,6 +152,8 @@ function runDBVersionUpgrade(versionTableName, migrationFilesFolder) {
 						getAllDBs(repeatFile.dbServer).forEach(function(dbServerName) {
 							if (!plugins.rawSQL.executeSQL(dbServerName, '/*IGNORE-SQL-TIMING-LOGGING*/\n' + repeatFile.getFileData())) {
 								throw new Error('Failed to run repeat migration SQL FILE: ' + repeatFile.name + ' \n' + plugins.rawSQL.getException());
+							} else {
+								getTableNamesDataChangesAndTriggerFlush(repeatFile.getFileData(), dbServerName)
 							}
 						})
 						foundRepeatsForDBName.shift();
@@ -169,6 +173,33 @@ function runDBVersionUpgrade(versionTableName, migrationFilesFolder) {
 		application.output('Please Reload all tables/table structure from DB!!');
 	}
 }
+
+/**
+ * @protected 
+ * @param {String} fileContent
+ * @param {String} serverName
+ *
+ * @properties={typeid:24,uuid:"B7A33B66-D4A4-445A-8B16-F31A61F4526A"}
+ */
+function getTableNamesDataChangesAndTriggerFlush(fileContent, serverName) {
+	   var tableNames = {};
+	   var regex = /\b(UPDATE|INSERT INTO|DELETE FROM)\s+([\w_]+)/gi;
+	   /**@type {Array<String>} */
+	   var match;
+	   while ((match = regex.exec(fileContent.replace(/\s\s+/g, ' '))) !== null) {
+	        var tableName = match[2].trim();
+
+	        
+	        // add table name to set
+	        tableNames[tableName] = true;
+	   }
+
+	   Object.keys(tableNames).forEach(function(tableName) {
+		   if(databaseManager.getTable(serverName,tableName)) {
+			   plugins.rawSQL.flushAllClientsCache(serverName,tableName);
+		   }
+	   })
+	}
 
 /**
  * @private
