@@ -156,8 +156,12 @@ function getCurrentEnvironment() {
 		return CLOUD_ENVIRONMENT_TYPES.DEVELOP;
 	} else {
 		var currentEnv = scopes.svyDeployUtils.getEnvironmentProperty('ENVIRONMENT');
-		if(currentEnv && Object.keys(CLOUD_ENVIRONMENT_TYPES).includes(currentEnv.toLowerCase())) {
-			return currentEnv.toLowerCase();
+		var matchedKey = Object.keys(CLOUD_ENVIRONMENT_TYPES).filter(function(item) {
+			return CLOUD_ENVIRONMENT_TYPES[item] == currentEnv.toLowerCase()
+		})
+		
+		if(currentEnv && matchedKey.length) {
+			return CLOUD_ENVIRONMENT_TYPES[matchedKey[0]];
 		}
 	}
 	return CLOUD_ENVIRONMENT_TYPES.DEVELOP;
