@@ -1034,7 +1034,7 @@ function executeQuery(dbName, table, queryToExec) {
             }
         }
 
-        if (table.getRowIdentifierColumnNames().length > 0 && table.getColumn(table.getRowIdentifierColumnNames()[0]).getSequenceType() == JSColumn.SERVOY_SEQUENCE) {
+        if (table.getRowIdentifierColumnNames().length > 0 && table.getColumn(table.getRowIdentifierColumnNames()[0]).getSequenceType() == JSColumn['SERVOY_SEQUENCE']) {
             application.output("Table " + table.getSQLName() + " is using Servoy Sequence, this should be avoided. For now a manual update of the sequence is required", LOGGINGLEVEL.WARNING);
         }
     }
