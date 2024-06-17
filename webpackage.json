@@ -8,6 +8,7 @@
     "sourceUrl" : "https://github.com/Servoy/svyCloudUtils",
     "releases" : [
         {"version":"2022.3.0","url":"https://github.com/Servoy/svyCloudUtils/releases/download/v2022.3.0/svyCloudUtils.servoy", "servoy-version":"2022.3.0", "dependency":"svyUtils#>=2022.3.1"},
-        {"version":"2023.6.0","url":"https://github.com/Servoy/svyCloudUtils/releases/download/v2023.6.0/svyCloudUtils.servoy", "servoy-version":"2023.6.0", "dependency":"svyUtils#>=2022.3.1"}
+        {"version":"2023.6.0","url":"https://github.com/Servoy/svyCloudUtils/releases/download/v2023.6.0/svyCloudUtils.servoy", "servoy-version":"2023.6.0", "dependency":"svyUtils#>=2022.3.1"},
+        {"version":"2024.3.0","url":"https://github.com/Servoy/svyCloudUtils/releases/download/v2024.3.0/svyCloudUtils.servoy", "servoy-version":"2024.3.0", "dependency":"svyUtils#>=2022.3.1"}
      ]
 }
