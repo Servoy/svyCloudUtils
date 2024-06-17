@@ -167,7 +167,9 @@ function runDBVersionUpgrade(versionTableName, migrationFilesFolder) {
 	if (!application.isInDeveloper()) {
 		var allServers = plugins.maintenance.getServerNames(true);
 		for (var i in allServers) {
-			plugins.maintenance.getServer(allServers[i]).reloadDataModel();
+			if(!databaseManager.getDatabaseProductName(allServers[i]).startsWith('hsql')) {
+				plugins.maintenance.getServer(allServers[i]).reloadDataModel();
+			}
 		}
 	} else {
 		application.output('Please Reload all tables/table structure from DB!!');
