@@ -11,10 +11,10 @@ var DB_CACHE = {
 
 /**
  * @protected
- * @type {Boolean}
+ * @type {Array<Boolean>}
  * @properties={typeid:35,uuid:"62E3253C-3404-48EA-9345-8F5BE6D3B5DD",variableType:-4}
  */
-var hasAsyncCall = false;
+var hasAsyncCall = [];
 
 /**
  * @protected 
@@ -806,76 +806,75 @@ function importCsvFile(dbName, tableName, file, statusCallBackFunction) {
                         }
 
                         /** @type {Array<*>} */
-                        var values = rowData.map(
-                            /**
-                             * @param {*} value
-                             * @param {Number} index
-                             * @return {String|Number}
-                             */
-                            function (value, index) {
-                                /**@type {String} */
-                                var columnName = header[index] || JSON.parse(header[index] || '')
-                                var column = table.getColumn(columnName);
-                                //Convert types
-                                if (column) {
-                                    switch (column.getType()) {
-                                        case JSColumn.DATETIME:
-                                            if (value) {
-                                            	if (/^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d/.test(value)) {
-                                                	return "'" + value + "'";
-                                                } else if (/^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d/.test(value)) {
-                                                    var newDate = utils.dateFormat(utils.parseDate(value.replace('T', ' '), 'yyyy-MM-dd HH:mm:ssZ', 'UTC'), 'yyyy-MM-dd HH:mm:ss');
-                                                    if (newDate) {
-                                                        return "'" + newDate + "'";
-                                                    }
-                                                }
-                                            }
-                                            return 'NULL';
-                                        case JSColumn.INTEGER:
-                                            var returnInt = ['', 'Infinity', 'NaN'].includes(value.toString()) ? 'NULL' : parseInt(value.toString());
-                                            if (isNaN(returnInt)) {
-                                                returnInt = 'NULL';
-                                            } else if (returnInt != 'NULL') {
-                                                // FIX for boolean in postgres
-                                                returnInt = "'" + returnInt + "'";
-                                            }
-                                            return returnInt;
-                                        case JSColumn.NUMBER:
-                                            var returnNum = ['', 'Infinity', 'NaN'].includes(value.toString()) ? 'NULL' : parseFloat(value.toString());
-                                            if (isNaN(returnNum)) {
-                                                returnNum = 'NULL';
-                                            }
-                                            return returnNum;
-                                        case JSColumn.MEDIA:
-                                            if (value) {
-                                                hasMediaColumn = true; //Will force the sql execute to max 25 instead to max it too 100MB
-                                                if (value.startsWith('base64:')) {
-                                                    //Media is double encoded to have a easy workaround for linebreaks
-                                                    return "decode('" + utils.base64ToString(value.replace('base64:', '')) + "', 'base64')";
-                                                } else {
-                                                    return "decode('" + value + "', 'base64')";
-                                                }
-                                            } else {
-                                                return 'NULL';
-                                            }
-                                            default:
-                                                if (!value && column.getAllowNull() || value == 'base64:' && column.getAllowNull()) {
-                                                    return 'NULL';
-                                                } else {
-                                                    if (value && value.startsWith('base64:')) {
-                                                        value = utils.base64ToString(value.replace('base64:', ''));
-                                                    }
-                                                    if (value && value.length > column.getLength()) {
-                                                        value = value.substr(0, column.getLength())
-                                                    }
-                                                    return "'" + utils.stringReplace(value || "", "'", "''") + "'";
-                                                }
-                                    }
-                                } else {
-                                    application.output("FAILED TO GET COLUMN: " + header[index] + " IN TABLE: " + tableName, LOGGINGLEVEL.ERROR);
-                                    return 'NULL';
-                                }
-                            });
+						var values = rowData.map(/**
+							 * @param {*} value
+							 * @param {Number} index
+							 * @return {String|Number}
+							 */
+							function(value, index) {
+								/**@type {String} */
+								var columnName = header[index] || JSON.parse(header[index] || '')
+								var column = table.getColumn(columnName);
+								//Convert types
+								if (column) {
+									switch (column.getType()) {
+									case JSColumn.DATETIME:
+										if (value) {
+											if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(value)) {
+												return "'" + value + "'";
+											} else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value)) {
+												var newDate = utils.dateFormat(utils.parseDate(value.replace('T', ' '), 'yyyy-MM-dd HH:mm:ssZ', 'UTC'), 'yyyy-MM-dd HH:mm:ss');
+												if (newDate) {
+													return "'" + newDate + "'";
+												}
+											}
+										}
+										return 'NULL';
+									case JSColumn.INTEGER:
+										var returnInt = ['', 'Infinity', 'NaN'].includes(value.toString()) ? 'NULL' : parseInt(value.toString(), 10);
+										if (isNaN(returnInt)) {
+											returnInt = 'NULL';
+										} else if (returnInt !== 'NULL') {
+											// FIX for boolean in postgres
+											returnInt = "'" + returnInt + "'";
+										}
+										return returnInt;
+									case JSColumn.NUMBER:
+										var returnNum = ['', 'Infinity', 'NaN'].includes(value.toString()) ? 'NULL' : parseFloat(value.toString());
+										if (isNaN(returnNum)) {
+											returnNum = 'NULL';
+										}
+										return returnNum;
+									case JSColumn.MEDIA:
+										if (value) {
+											hasMediaColumn = true; //Will force the sql execute to max 25 instead to max it too 100MB
+											if (value.startsWith('base64:')) {
+												//Media is double encoded to have a easy workaround for linebreaks
+												return "decode('" + utils.base64ToString(value.replace('base64:', '')) + "', 'base64')";
+											} else {
+												return "decode('" + value + "', 'base64')";
+											}
+										} else {
+											return 'NULL';
+										}
+									default:
+										if ( (!value && column.getAllowNull()) || (value === 'base64:' && column.getAllowNull())) {
+											return 'NULL';
+										} else {
+											if (value && value.startsWith('base64:')) {
+												value = utils.base64ToString(value.replace('base64:', ''));
+											}
+											if (value && value.length > column.getLength()) {
+												value = value.substr(0, column.getLength())
+											}
+											return "'" + utils.stringReplace(value || "", "'", "''") + "'";
+										}
+									}
+								} else {
+									application.output("FAILED TO GET COLUMN: " + header[index] + " IN TABLE: " + tableName, LOGGINGLEVEL.ERROR);
+									return 'NULL';
+								}
+							});
                         if (isPostgresDB(dbName) || isMicrosoftDB(dbName)) {
                             //Postgres & MSSQL support multi insert.
                             if (queryToExec.length == 0) {
@@ -979,12 +978,13 @@ function importCsvFile(dbName, tableName, file, statusCallBackFunction) {
 
         //We do a final wait count te be sure that we do not have any async queries running
         var waitCount = 0;
-        while (hasAsyncCall == true && waitCount < 200) {
+        while (hasAsyncCall.length && waitCount < 200) {
             application.sleep(50);
             waitCount++;
         }
         application.output('Executed insert sql ' + counter + ' of ' + lineCount, LOGGINGLEVEL.DEBUG);
     }
+    hasAsyncCall = [];
     application.output('Import of file: ' + dbName + ' / ' + tableName + ' -done-', LOGGINGLEVEL.INFO);
     if(statusCallBackFunction) {
     	statusCallBackFunction('done', tableName);
@@ -1014,8 +1014,8 @@ function executeQuery(dbName, table, queryToExec) {
         }
     } else if (isPostgresDB(dbName)) {
     	preInsertSQL += "SET WORK_MEM='" + (getCurrentWorkMem(dbName).value * 2) + getCurrentWorkMem(dbName).size +"';\n"
-        preInsertSQL += 'SET session_replication_role = replica;\n BEGIN;\n';
-        postInsertSQL += '\nCOMMIT;\nSET session_replication_role = DEFAULT;';
+        preInsertSQL += 'SET session_replication_role = replica;\n';
+        postInsertSQL += '\nSET session_replication_role = DEFAULT;';
         postInsertSQL += '\nRESET WORK_MEM;'
         if (table.getRowIdentifierColumnNames().length > 0 && table.getColumn(table.getRowIdentifierColumnNames()[0]).getSequenceType() == JSColumn.DATABASE_SEQUENCE && table.getColumn(table.getRowIdentifierColumnNames()[0]).getType() == JSColumn.INTEGER) {
             var sequenceName;
@@ -1034,14 +1034,14 @@ function executeQuery(dbName, table, queryToExec) {
             }
         }
 
-        if (table.getRowIdentifierColumnNames().length > 0 && table.getColumn(table.getRowIdentifierColumnNames()[0]).getSequenceType() == JSColumn['SERVOY_SEQUENCE']) {
+        if (table.getRowIdentifierColumnNames().length > 0 && table.getColumn(table.getRowIdentifierColumnNames()[0]).getSequenceType() == JSColumn.SERVOY_SEQUENCE) {
             application.output("Table " + table.getSQLName() + " is using Servoy Sequence, this should be avoided. For now a manual update of the sequence is required", LOGGINGLEVEL.WARNING);
         }
     }
 
     var waitCount = 0;
-    while (hasAsyncCall == true && waitCount < 100) {
-        application.sleep(50);
+    while (hasAsyncCall.length && waitCount < 100) {
+        application.sleep(10);
         waitCount++;
     }
     
@@ -1059,7 +1059,9 @@ function executeQuery(dbName, table, queryToExec) {
                 	}
                 }
             } finally {
-                hasAsyncCall = false;
+            	if(hasAsyncCall.length) {
+            		hasAsyncCall.pop();
+            	}
             }
             return true;
         }
