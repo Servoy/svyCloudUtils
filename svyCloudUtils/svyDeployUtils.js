@@ -196,9 +196,9 @@ function getTableNamesDataChangesAndTriggerFlush(fileContent, serverName) {
 	        tableNames[tableName] = true;
 	   }
 
-	   Object.keys(tableNames).forEach(function(tblName) {
-		   if(databaseManager.getTable(serverName,tblName)) {
-			   plugins.rawSQL.flushAllClientsCache(serverName,tblName);
+	   Object.keys(tableNames).forEach(function(tableName) {
+		   if(databaseManager.getTable(serverName,tableName)) {
+			   plugins.rawSQL.flushAllClientsCache(serverName,tableName);
 		   }
 	   })
 	}
