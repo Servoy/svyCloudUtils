@@ -185,8 +185,13 @@ function buildSelectSQL(dbName, jsTable, additionalFilters, columnNameRegex) {
         for (var additionalFilterIndex in additionalFilters) {
             var filter = additionalFilters[additionalFilterIndex];
             if (jsTable.getColumn(filter.fieldName)) {
-                sql.where.add(sql.columns[filter.fieldName].eq(filter.value)); //Add to the data query
-                cntSql.where.add(cntSql.columns[filter.fieldName].eq(filter.value)); //Add to countQuery
+                if(filter.value.toString().toLowerCase().startsWith('select ')) {
+                	sql.where.add(sql.columns[filter.fieldName].isin(filter.value, [])); //Add to the data query
+                	cntSql.where.add(cntSql.columns[filter.fieldName].isin(filter.value, [])); //Add to countQuery
+                } else {
+                	sql.where.add(sql.columns[filter.fieldName].eq(filter.value)); //Add to the data query
+                	cntSql.where.add(cntSql.columns[filter.fieldName].eq(filter.value)); //Add to countQuery
+                }
             } else {
                 if (filter.hasOwnProperty('required') && filter.required === true) {
                     application.output("Skipping table: " + jsTable.getDataSource() + " additional filter added with required flag column (" + filter.fieldName + ") not found", LOGGINGLEVEL.INFO);
