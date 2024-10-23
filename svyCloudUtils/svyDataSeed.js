@@ -42,7 +42,14 @@ function getWorkspacePath() {
  * @type {{value: Number, size: String}}
  * @properties={typeid:35,uuid:"04D55C2F-7533-4746-AC75-D8C0EFDA37BC",variableType:-4}
  */
-var currentWorkMem = null
+var currentWorkMem = null;
+
+/**
+ * @protected 
+ * @type {{max_parallel_workers: Number, max_parallel_workers_per_gather: Number}}
+ * @properties={typeid:35,uuid:"031D4680-1128-488B-A1E2-887F6B5AE4ED",variableType:-4}
+ */
+var currentWorkers = null;
 
 /**
  * @public 
@@ -59,6 +66,22 @@ function getCurrentWorkMem(dbName) {
         currentWorkMem =  {value: workMemValue, size: workMemSize};
 	}
 	return currentWorkMem;
+}
+
+/**
+ * TODO generated, please specify type and doc for the params
+ * @param dbName
+ *
+ * @properties={typeid:24,uuid:"FE87A2A9-9993-42DE-B155-03BD86D5E209"}
+ */
+function getCurrentWorkers(dbName) {
+	if(!currentWorkers) {
+        var parallelWorker = databaseManager.getDataSetByQuery(dbName,"SELECT current_setting('max_parallel_workers');",[],-1).getValue(1,1);
+        var parallelGatherWorker = databaseManager.getDataSetByQuery(dbName,"SELECT current_setting('max_parallel_workers_per_gather');",[],-1).getValue(1,1);
+        
+        currentWorkers =  {max_parallel_workers: parseInt(parallelWorker), max_parallel_workers_per_gather: parseInt(parallelGatherWorker)};
+	}
+	return currentWorkers;
 }
 
 /**
@@ -1014,9 +1037,13 @@ function executeQuery(dbName, table, queryToExec) {
         }
     } else if (isPostgresDB(dbName)) {
     	preInsertSQL += "SET WORK_MEM='" + (getCurrentWorkMem(dbName).value * 2) + getCurrentWorkMem(dbName).size +"';\n"
+		preInsertSQL += "SET max_parallel_workers=" + (getCurrentWorkers(dbName).max_parallel_workers * 2) + ";\n"
+		preInsertSQL += "SET max_parallel_workers_per_gather=" + (getCurrentWorkers(dbName).max_parallel_workers_per_gather * 2) + ";\n"
         preInsertSQL += 'SET session_replication_role = replica;\n';
         postInsertSQL += '\nSET session_replication_role = DEFAULT;';
         postInsertSQL += '\nRESET WORK_MEM;'
+        postInsertSQL += '\nRESET max_parallel_workers;'
+        postInsertSQL += '\nRESET max_parallel_workers_per_gather;'
         if (table.getRowIdentifierColumnNames().length > 0 && table.getColumn(table.getRowIdentifierColumnNames()[0]).getSequenceType() == JSColumn.DATABASE_SEQUENCE && table.getColumn(table.getRowIdentifierColumnNames()[0]).getType() == JSColumn.INTEGER) {
             var sequenceName;
             var dsSeq = databaseManager.getDataSetByQuery(table.getServerName(), "SELECT pg_get_serial_sequence('" + table.getSQLName() + "', '" + table.getColumn(table.getRowIdentifierColumnNames()[0]).getQuotedSQLName() + "')", null, 1)
