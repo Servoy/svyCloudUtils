@@ -454,3 +454,84 @@ function setServoyProperty(name, value) {
 	instance.put(name, value);
 	instance.save();
 }
+
+/**
+ * @public 
+ * @param {String} randomServoyServerName
+ * 
+ * @properties={typeid:24,uuid:"FC3E751E-5588-4274-8ADA-9CFB532ED1D1"}
+ */
+function initCloneServersBasedOnDatabaseInfo(randomServoyServerName) {
+	if(!isPostgresDB(randomServoyServerName)) {
+		application.output('initCloneServersBasedOnDatabaseInfo is currently only supported for Postgres databases', LOGGINGLEVEL.ERROR);
+		return;
+	}
+	var sql = "SELECT d.datname AS database_name, pg_catalog.shobj_description(d.oid, 'pg_database') AS comment FROM pg_catalog.pg_database d ORDER BY d.datname;";
+	var ds = databaseManager.getDataSetByQuery(randomServoyServerName, sql, [], -1);
+	
+	for(var i = 1; i <= ds.getMaxRowIndex(); i++) {
+		/**@type {String} */
+		var postgresServerName = ds.getValue(i,1);
+		/**@type {String} */
+		var comment = ds.getValue(i,2);
+		if(comment && comment.trim().startsWith('{') && comment.trim().endsWith('}')) {
+			/**@type {{cloneFromSVYName: String, SVYName: String}} */
+			var parsedData = JSON.parse(comment);
+			if(parsedData.cloneFromSVYName && parsedData.SVYName && !databaseManager.getServerNames().includes(parsedData.SVYName)) {
+				createNewCloneOfDatabase(parsedData.cloneFromSVYName, postgresServerName, parsedData.SVYName);
+			}
+		}
+	}
+}
+
+/**
+ * @public 
+ * @param {String} originalDBServoyName
+ * @param {String} newDBNamePostgres
+ * @param {String} [newDBNameServoyName] when empty 'newDBNamePostgres' will be used
+ *
+ * @properties={typeid:24,uuid:"068BA581-0335-4C93-96C2-A1BAAC12A29F"}
+ */
+function createNewCloneOfDatabase(originalDBServoyName,newDBNamePostgres, newDBNameServoyName ) {
+	if(!databaseManager.getServerNames().includes(originalDBServoyName)) {
+		application.output('Given originalDB: ' + originalDBServoyName + " doesn't exist within this servoy configuration");
+		return;
+	}
+	
+	if(databaseManager.getServerNames().includes((newDBNameServoyName||newDBNamePostgres))) {
+		application.output('Ignore generating properties config for database: ' + (newDBNameServoyName||newDBNamePostgres) + ' already exists', LOGGINGLEVEL.DEBUG);
+		return;
+	}
+	
+	
+	var currentServerConfig = Packages.com.servoy.j2db.server.shared.ApplicationServerRegistry.get().getServerManager().getServerConfig(originalDBServoyName);
+	var Builder = new Packages.com.servoy.j2db.persistence.ServerConfig.Builder(currentServerConfig);
+	Builder.setServerUrl(currentServerConfig.getServerUrl().replace('/' + getServerNameFromJdbcUrl(currentServerConfig.getServerUrl()) ,'/' + newDBNamePostgres))
+	Builder.setDataModelCloneFrom(originalDBServoyName)
+	Builder.setServerName((newDBNameServoyName||newDBNamePostgres))
+	var newDbServer = Builder.build()
+	
+	Packages.com.servoy.j2db.server.shared.ApplicationServerRegistry.get().getServerManager().createServer(newDbServer);
+	Packages.com.servoy.j2db.server.shared.ApplicationServerRegistry.get().getServerManager().saveServerConfig(null,newDbServer);
+	
+	var sql = 'COMMENT ON DATABASE "' + newDBNamePostgres + '" IS \'{"cloneFromSVYName": "' + originalDBServoyName + '", "SVYName": "' + (newDBNameServoyName||newDBNamePostgres) + '"}\';'
+	plugins.rawSQL.executeSQL(originalDBServoyName,sql);
+}
+
+/**
+ * @private 
+ * @param {String} jdbcUrl
+ * @return {String}
+ *
+ * @properties={typeid:24,uuid:"4E25AB1A-8857-4874-91F4-3B69E7672C67"}
+ */
+function getServerNameFromJdbcUrl(jdbcUrl) {
+    var regex = /^jdbc:(postgresql|mysql|mariadb|sqlserver):\/\/([^:\/]+)(:\d+)?\/(.*)/;
+    var match = jdbcUrl.match(regex);
+    
+    if (match && match[4]) {
+        return match[4].split('?')[0];
+    } else {
+        throw new Error("Invalid JDBC URL");
+    }
+}
