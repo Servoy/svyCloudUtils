@@ -195,10 +195,9 @@ function getTableNamesDataChangesAndTriggerFlush(fileContent, serverName) {
 	        // add table name to set
 	        tableNames[tableName] = true;
 	   }
-
-	   Object.keys(tableNames).forEach(function(tableName) {
-		   if(databaseManager.getTable(serverName,tableName)) {
-			   plugins.rawSQL.flushAllClientsCache(serverName,tableName);
+	   Object.keys(tableNames).forEach(function(tableToFlush) {
+		   if(databaseManager.getTable(serverName,tableToFlush)) {
+			   plugins.rawSQL.flushAllClientsCache(serverName,tableToFlush);
 		   }
 	   })
 	}
@@ -327,7 +326,7 @@ function parseMediaDBFile(media, migrationFilesFolder) {
 	 * @public
 	 */
 	this.isValidFile = function() {
-		if (this.name.match(new RegExp("^" + migrationFilesFolder))) {
+		if (this.name.startsWith(migrationFilesFolder) && this.name.endsWith('.sql')) {
 			if (this.name.match(new RegExp(migrationFilesFolder + "/(V|R)__"))) {
 				if (this.name.match(new RegExp(migrationFilesFolder + "/(V|R)__(\\d*)__"))) {
 					var dbName = this.name.replace(new RegExp(migrationFilesFolder + "/(V|R)__(\\d*)__"), '').split('__')[0];
