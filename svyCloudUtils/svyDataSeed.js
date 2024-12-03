@@ -204,7 +204,11 @@ function buildSelectSQL(dbName, jsTable, additionalFilters, columnNameRegex) {
     //Instead of LIMIT & OFFSET we use sort
     //UUID Will be removed from the argument list
     if(!isProgressDB(dbName)) {
-    	sql.where.add(sql.columns[getJSTablePKColumn(jsTable)].gt(application.getUUID()));
+    	if(jsTable.getColumn(getJSTablePKColumn(jsTable)).getType() == JSColumn.INTEGER || jsTable.getColumn(getJSTablePKColumn(jsTable)).getType() == JSColumn.NUMBER) {
+    		sql.where.add(sql.columns[getJSTablePKColumn(jsTable)].gt(0));
+    	} else {
+    		sql.where.add(sql.columns[getJSTablePKColumn(jsTable)].gt(application.getUUID()));
+    	}
     }
     
     //Parse to string & args array
@@ -412,15 +416,20 @@ function createDataSeedFile(selectedDB, customPathToSvyCloudUtils, returnDatasee
 
         var offset = 0;
         var lastQueryResultPK;
-		if(jsTable.getColumn(getJSTablePKColumn(jsTable)).getType() != JSColumn.UUID_COLUMN && !jsTable.getColumn(getJSTablePKColumn(jsTable)).hasFlag(JSColumn.UUID_COLUMN)) {
-			lastQueryResultPK = '';
-		} else {
+        
+        //UUID Column type will also return as TEXT
+		if(jsTable.getColumn(getJSTablePKColumn(jsTable)).getType() != JSColumn.TEXT && !jsTable.getColumn(getJSTablePKColumn(jsTable)).hasFlag(JSColumn.UUID_COLUMN)) {
+			lastQueryResultPK = 0
+		} else if(jsTable.getColumn(getJSTablePKColumn(jsTable)).hasFlag(JSColumn.UUID_COLUMN)){
 			if(servoyVersionNumber <= 20230600) {
-				lastQueryResultPK = application.getUUID('00000000-0000-0000-0000-00000000000').toString()
+				lastQueryResultPK = application.getUUID('00000000-0000-0000-0000-00000000000').toString();
 			} else {
-				lastQueryResultPK = application.getUUID('00000000-0000-0000-0000-00000000000')
+				lastQueryResultPK = application.getUUID('00000000-0000-0000-0000-00000000000');
 			}
+		} else {
+			lastQueryResultPK = '';
 		}
+		
         var exportFile = plugins.file.convertToJSFile(tempFolder + scopes.svyIO.getFileSeperator() + jsTable.getSQLName() + '.csv');
         var fileWriter = new scopes.svyIO.BufferedWriter(exportFile, true);
         var numberOfFileCounter = 1;
@@ -470,14 +479,17 @@ function createDataSeedFile(selectedDB, customPathToSvyCloudUtils, returnDatasee
             var csvHeader = (offset == 0 ? true : false);
             offset += dataset.getMaxRowIndex();
             
-    		if(jsTable.getColumn(getJSTablePKColumn(jsTable)).getType() != JSColumn.UUID_COLUMN && !jsTable.getColumn(getJSTablePKColumn(jsTable)).getType() != JSColumn.TEXT && !jsTable.getColumn(getJSTablePKColumn(jsTable)).hasFlag(JSColumn.UUID_COLUMN)) {
+            //UUID Column type will also return as TEXT
+            if(jsTable.getColumn(getJSTablePKColumn(jsTable)).getType() != JSColumn.TEXT && !jsTable.getColumn(getJSTablePKColumn(jsTable)).hasFlag(JSColumn.UUID_COLUMN)) {
     			lastQueryResultPK = dataset.getValue(dataset.getMaxRowIndex(), dataset.getColumnNames().indexOf(getJSTablePKColumn(jsTable)) + 1);
-    		} else {
+            } else if(jsTable.getColumn(getJSTablePKColumn(jsTable)).hasFlag(JSColumn.UUID_COLUMN)){
     			if(servoyVersionNumber <= 20230600) {
     				lastQueryResultPK = application.getUUID(dataset.getValue(dataset.getMaxRowIndex(), dataset.getColumnNames().indexOf(getJSTablePKColumn(jsTable)) + 1)).toString()
     			} else {
     				lastQueryResultPK = application.getUUID(dataset.getValue(dataset.getMaxRowIndex(), dataset.getColumnNames().indexOf(getJSTablePKColumn(jsTable)) + 1))
     			}
+    		} else {
+    			lastQueryResultPK = '';
     		}
     		
             if (queryObj.base64Fields.length) {
