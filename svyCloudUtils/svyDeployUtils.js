@@ -103,7 +103,6 @@ function runDBVersionUpgrade(versionTableName, migrationFilesFolder) {
 			} else {
 				foundRepeats.push(parsedFile);
 			}
-			
 			if(allVersionsDBNames.indexOf(parsedFile.dbServer) == -1) {
 				allVersionsDBNames.push(parsedFile.dbServer);
 			}
@@ -114,6 +113,25 @@ function runDBVersionUpgrade(versionTableName, migrationFilesFolder) {
 	foundVersions.sort(sortVersion);
 	foundRepeats.sort(sortVersion);
 	
+	// Check for duplicates in foundVersions
+	for (var j = 0; j < foundVersions.length - 1; j++) {
+	    var current = foundVersions[j];
+	    var next = foundVersions[j + 1];
+
+	    if (current.dbServer === next.dbServer && current.version === next.version) {
+	        throw new Error('Duplicate version ' + current.version + ' found for database ' + current.dbServer);
+	    }
+	}
+
+	// Check for duplicates in foundRepeats
+	for (var k = 0; k < foundRepeats.length - 1; k++) {
+	    var currentRepeat = foundRepeats[k];
+	    var nextRepeat = foundRepeats[k + 1];
+
+	    if (currentRepeat.dbServer === nextRepeat.dbServer && currentRepeat.version === nextRepeat.version) {
+	        throw new Error('Duplicate repeat version ' + currentRepeat.version + ' found for database ' + currentRepeat.dbServer);
+	    }
+	}
 
 	for(var dbNameIndex in allVersionsDBNames) {
 		var currentDBVersionName = allVersionsDBNames[dbNameIndex];
