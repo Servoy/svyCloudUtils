@@ -492,9 +492,9 @@ function initCloneServersBasedOnDatabaseInfo(randomServoyServerName) {
 		/**@type {String} */
 		var comment = ds.getValue(i,2);
 		if(comment && comment.trim().startsWith('{') && comment.trim().endsWith('}')) {
-			/**@type {{cloneFromSVYName: String, SVYName: String}} */
+			/**@type {{cloneFromSVYName: String, SVYName: String, env: String}} */
 			var parsedData = JSON.parse(comment);
-			if(parsedData.cloneFromSVYName && parsedData.SVYName && !databaseManager.getServerNames().includes(parsedData.SVYName)) {
+			if(parsedData.cloneFromSVYName && parsedData.SVYName && parsedData.env && !databaseManager.getServerNames().includes(parsedData.SVYName) && parsedData.env == scopes.svyCloud.getCurrentEnvironment()) {
 				createNewCloneOfDatabase(parsedData.cloneFromSVYName, postgresServerName, parsedData.SVYName);
 			}
 		}
@@ -531,7 +531,7 @@ function createNewCloneOfDatabase(originalDBServoyName,newDBNamePostgres, newDBN
 	Packages.com.servoy.j2db.server.shared.ApplicationServerRegistry.get().getServerManager().createServer(newDbServer);
 	Packages.com.servoy.j2db.server.shared.ApplicationServerRegistry.get().getServerManager().saveServerConfig(null,newDbServer);
 	
-	var sql = 'COMMENT ON DATABASE "' + newDBNamePostgres + '" IS \'{"cloneFromSVYName": "' + originalDBServoyName + '", "SVYName": "' + (newDBNameServoyName||newDBNamePostgres) + '"}\';'
+	var sql = 'COMMENT ON DATABASE "' + newDBNamePostgres + '" IS \'{"cloneFromSVYName": "' + originalDBServoyName + '", "SVYName": "' + (newDBNameServoyName||newDBNamePostgres) + '", "env": "' + scopes.svyCloud.getCurrentEnvironment() +'"}\';'
 	plugins.rawSQL.executeSQL(originalDBServoyName,sql);
 }
 
