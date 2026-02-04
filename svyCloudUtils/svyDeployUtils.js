@@ -1,7 +1,7 @@
 /**
  * Method to copy all jasperreports that are located in the reports folder to the jasperreport location on the server.
  * @public
- * @properties={typeid:24,uuid:"D9BBFECF-49BF-4F62-B2D8-A13B1234C5DB"}
+ * @properties={typeid:24,uuid:"8E60915A-6880-4A8E-8B3D-0F03B4752CB0"}
  */
 function copyReportsToServer() {
 	var location = plugins.file.getDefaultUploadLocation().replace('uploads', '')
@@ -22,7 +22,7 @@ function copyReportsToServer() {
 /**
  * @param database
  *
- * @properties={typeid:24,uuid:"36E4C256-8D63-4A60-9C08-12902328516F"}
+ * @properties={typeid:24,uuid:"4C8C9541-CD2E-41A9-9775-62C53EE48ABF"}
  */
 function removeAllTablesFromDatabase(database) {
 	var tables = databaseManager.createEmptyDataSet(0, ['tablename']);
@@ -49,7 +49,7 @@ function removeAllTablesFromDatabase(database) {
  * @param {String} dbName
  * @return {Boolean}
  *
- * @properties={typeid:24,uuid:"6E4BCC0B-67F2-4156-96BC-D1B340CB0130"}
+ * @properties={typeid:24,uuid:"34F1BA34-478B-4764-83EE-AB59DBC82D6E"}
  */
 function isPostgresDB(dbName) {
 	return databaseManager.getDatabaseProductName(dbName).match('postgres') ? true : false;
@@ -57,7 +57,7 @@ function isPostgresDB(dbName) {
 
 /**
  * @enum
- * @properties={typeid:35,uuid:"4BE44304-B2C2-4EFD-96B5-487052500BAE",variableType:-4}
+ * @properties={typeid:35,uuid:"484959BC-5196-4005-BE4B-4C6224A0393F",variableType:-4}
  */
 var DB_IMPORT_TYPE = {
 	REPEAT: 'R',
@@ -80,7 +80,7 @@ var DB_IMPORT_TYPE = {
  * @param {String} [versionTableName] tableName to store the version data, when this is set it will not be stored in the servoy.properties file
  * @param {String} [migrationFilesFolder] optional custom media folder path instead of the default "database-migration."
  *
- * @properties={typeid:24,uuid:"0AAF4E9B-20E0-440E-ADB9-96CE939A5AE9"}
+ * @properties={typeid:24,uuid:"89B79D43-CD47-4476-8ECE-0651A28AD263"}
  */
 function runDBVersionUpgrade(versionTableName, migrationFilesFolder) {
 	migrationFilesFolder = migrationFilesFolder||'database-migration';
@@ -135,7 +135,6 @@ function runDBVersionUpgrade(versionTableName, migrationFilesFolder) {
 
 	for(var dbNameIndex in allVersionsDBNames) {
 		var currentDBVersionName = allVersionsDBNames[dbNameIndex];
-		var nextVersion = 0;
 		//Create 2 new arrays with only the sql files needed for this database
 		var foundVersionsForDBName = foundVersions.filter(/**@param {parseMediaDBFile} item */function(item) {
 			return item.dbServer == currentDBVersionName;
@@ -144,37 +143,61 @@ function runDBVersionUpgrade(versionTableName, migrationFilesFolder) {
 		var foundRepeatsForDBName = foundRepeats.filter(/**@param {parseMediaDBFile} item */function(item) {
 			return item.dbServer == currentDBVersionName;
 		})
-		while (foundVersionsForDBName.length > 0 || foundRepeatsForDBName.length > 0) {
-			nextVersion++;
-			if (foundVersionsForDBName.length > 0) {
-				var versionFile = foundVersionsForDBName[0];
-				if (versionFile.version == nextVersion) {
-					getAllDBs(versionFile.dbServer).forEach(function(dbServerName) {
-						createVersionTable(dbServerName, versionTableName);
-						var currentVersion = getCurrentVersion(dbServerName, versionTableName);
-						if (versionFile.version > currentVersion) {
-							if (!plugins.rawSQL.executeSQL(dbServerName, '/*IGNORE-SQL-TIMING-LOGGING*/\n' + versionFile.getFileData())) {
-								throw new Error('Failed to run version migration SQL FILE: ' + versionFile.name + ' \n' + plugins.rawSQL.getException());
+		
+		// Get the list of all databases (main + clones) for this DB name
+		var allDatabasesForDBName = getAllDBs(currentDBVersionName);
+		
+		// Merge and sort version and repeat files by version number
+		var allMigrationFiles = foundVersionsForDBName.concat(foundRepeatsForDBName);
+		allMigrationFiles.sort(sortVersion);
+		
+		// Process each database individually
+		for(var dbIndex = 0; dbIndex < allDatabasesForDBName.length; dbIndex++) {
+			var dbServerName = allDatabasesForDBName[dbIndex];
+			createVersionTable(dbServerName, versionTableName);
+			var currentVersion = getCurrentVersion(dbServerName, versionTableName);	
+			var nextVersionToApply = currentVersion;
+			
+			// Track which repeats have been executed for this database
+			var executedRepeats = {};
+			
+			// Keep processing until all versions and repeats have been handled
+			var allProcessed = false;
+			while (!allProcessed) {
+				allProcessed = true;
+				
+				for(var mIndex = 0; mIndex < allMigrationFiles.length; mIndex++) {
+					var migrationFile = allMigrationFiles[mIndex];
+					
+					// For version files, apply if it's the next version to apply
+					if (migrationFile.type === DB_IMPORT_TYPE.VERSION) {
+						if (migrationFile.version === (nextVersionToApply + 1)) {
+							if (!plugins.rawSQL.executeSQL(dbServerName, '/*IGNORE-SQL-TIMING-LOGGING*/\n' + migrationFile.getFileData())) {
+								throw new Error('Failed to run version migration SQL FILE: ' + migrationFile.name + ' \n' + plugins.rawSQL.getException());
 							} else {
-								getTableNamesDataChangesAndTriggerFlush(versionFile.getFileData(), dbServerName)
+								getTableNamesDataChangesAndTriggerFlush(migrationFile.getFileData(), dbServerName)
 							}
-							setCurrentVersion(nextVersion, dbServerName, versionTableName);
+							setCurrentVersion(migrationFile.version, dbServerName, versionTableName);
+							nextVersionToApply = migrationFile.version;
+							
+							application.output(`Successfully applied migration File: ${migrationFile.name} for database: ${dbServerName} to version: ${nextVersionToApply}`, LOGGINGLEVEL.WARNING);
+							allProcessed = false;
+							break; // Restart loop to process in correct order
 						}
-					})
-					foundVersionsForDBName.shift();
-				}
-	
-				if (foundRepeatsForDBName.length > 0) {
-					var repeatFile = foundRepeatsForDBName[0];
-					if (repeatFile.version == nextVersion) {
-						getAllDBs(repeatFile.dbServer).forEach(function(dbServerName) {
-							if (!plugins.rawSQL.executeSQL(dbServerName, '/*IGNORE-SQL-TIMING-LOGGING*/\n' + repeatFile.getFileData())) {
-								throw new Error('Failed to run repeat migration SQL FILE: ' + repeatFile.name + ' \n' + plugins.rawSQL.getException());
+					}
+					// For repeat files, run if their version is at or below current and not yet executed
+					else if (migrationFile.type === DB_IMPORT_TYPE.REPEAT) {
+						if (migrationFile.version <= nextVersionToApply && !executedRepeats[migrationFile.name]) {
+							if (!plugins.rawSQL.executeSQL(dbServerName, '/*IGNORE-SQL-TIMING-LOGGING*/\n' + migrationFile.getFileData())) {
+								throw new Error('Failed to run repeat migration SQL FILE: ' + migrationFile.name + ' \n' + plugins.rawSQL.getException());
 							} else {
-								getTableNamesDataChangesAndTriggerFlush(repeatFile.getFileData(), dbServerName)
+								getTableNamesDataChangesAndTriggerFlush(migrationFile.getFileData(), dbServerName)
 							}
-						})
-						foundRepeatsForDBName.shift();
+							executedRepeats[migrationFile.name] = true;
+							application.output(`Successfully applied repeat migration File: ${migrationFile.name} for database: ${dbServerName}`, LOGGINGLEVEL.WARNING);
+							allProcessed = false;
+							break; // Restart loop
+						}
 					}
 				}
 			}
@@ -225,7 +248,7 @@ function getTableNamesDataChangesAndTriggerFlush(fileContent, serverName) {
  * @param {String} mainDB
  * @return {Array<String>}
  *
- * @properties={typeid:24,uuid:"B3FABE27-0A45-4FF0-8EB4-987CEE7D577D"}
+ * @properties={typeid:24,uuid:"C7C2BA2D-7268-4B2C-B3AD-396D13C364B4"}
  */
 function getAllDBs(mainDB) {
 	return [mainDB].concat(databaseManager.getDataModelClonesFrom(mainDB));
@@ -236,7 +259,7 @@ function getAllDBs(mainDB) {
  * @param {String} serverName
  * @param {String} [tableName]
  *
- * @properties={typeid:24,uuid:"9AEC1FEC-4653-44CE-BE95-E63358B6C2BC"}
+ * @properties={typeid:24,uuid:"02B78AC6-8A44-4534-A67A-1F162FADC988"}
  */
 function createVersionTable(serverName, tableName) {
 	if (serverName && tableName) {
@@ -261,7 +284,7 @@ function createVersionTable(serverName, tableName) {
  * @param {String} [tableName]
  *
  * @return {Number}
- * @properties={typeid:24,uuid:"DE8A7943-F805-48B4-97C8-A593AD27F7F9"}
+ * @properties={typeid:24,uuid:"B14FE757-40B3-44E8-A647-8817212E8F3E"}
  */
 function getCurrentVersion(serverName, tableName) {
 	var currentVersion = 0;
@@ -294,7 +317,7 @@ function getCurrentVersion(serverName, tableName) {
  * @param {String} [serverName]
  * @param {String} [tableName]
  *
- * @properties={typeid:24,uuid:"AD19F72E-FB45-47AE-8986-2C80B0AE951D"}
+ * @properties={typeid:24,uuid:"FBEAD04E-8250-4710-BEFD-7FC3EBF35764"}
  */
 function setCurrentVersion(versionNumber, serverName, tableName) {
 	if (serverName && tableName) {
@@ -313,17 +336,16 @@ function setCurrentVersion(versionNumber, serverName, tableName) {
 		} else {
 			throw Error("Can't write version to SQL Version table: " + serverName +"." + tableName)
 		}
-	} else {
-		setServoyProperty(serverName.toUpperCase() + '.DB_VERSION', versionNumber.toString());
 	}
+	setServoyProperty(serverName.toUpperCase() + '.DB_VERSION', versionNumber.toString());
 }
 
 /**
  * @protected
  * @constructor
  * @param {JSMedia} media
- * @properties={typeid:24,uuid:"DF868CC5-02DC-4969-9808-E8085043FD5A"}
  * @param {String} migrationFilesFolder
+ * @properties={typeid:24,uuid:"0899102D-D692-4191-A6B7-C6F74F73B44F"}
  */
 function parseMediaDBFile(media, migrationFilesFolder) {
 
@@ -402,7 +424,7 @@ function parseMediaDBFile(media, migrationFilesFolder) {
  *
  * @return {Number}
  *
- * @properties={typeid:24,uuid:"9F07B7DD-D1BE-4FE3-9EBB-D4F9B489667C"}
+ * @properties={typeid:24,uuid:"40E66BB8-C6B6-4671-8FCF-1D6CC94DA8C9"}
  */
 function sortVersion(a, b) {
 	var correctA = a.version;
@@ -416,15 +438,20 @@ function sortVersion(a, b) {
  *
  * @return {String}
  *
- * @properties={typeid:24,uuid:"4972F6EF-56DA-4A3E-9279-2F02B26D671E"}
+ * @properties={typeid:24,uuid:"279627B0-9B3E-47A4-B00F-E5BD32E6A3C5"}
  */
 function getServoyProperty(name) {
-	var value = Packages.com.servoy.j2db.util.Settings.getInstance().get(name);
-	if (!value) {
-		return null;
+	var versionStr = application.getVersion().trim();
+	var servoyVersion = utils.stringToNumber(versionStr.trim().split('.').map(function(value) {return (value.length < 2 ? ("0" + value) : value)}).join(''));
+
+	var returnValue;
+	if (servoyVersion < 2025060) {
+		returnValue = Packages.com.servoy.j2db.util.Settings.getInstance().get(name);
+	} else {
+		returnValue = application.getServoyProperty(name);
 	}
 
-	return value.toString();
+	return returnValue ? String(returnValue) : null;
 }
 
 /**
@@ -433,7 +460,7 @@ function getServoyProperty(name) {
  *
  * @return {String}
  *
- * @properties={typeid:24,uuid:"A272EF15-EF8E-486C-9CF6-6C118EC5BD9D"}
+ * @properties={typeid:24,uuid:"B1B64E55-4E90-4F8B-BABE-9EE5F980C374"}
  */
 function getSystemProperty(name) {
 	var value = Packages.java.lang.System.getProperty(name);
@@ -449,7 +476,7 @@ function getSystemProperty(name) {
  *
  * @return {String}
  *
- * @properties={typeid:24,uuid:"608BEC9A-238A-4427-ACBD-14374AA11FAE"}
+ * @properties={typeid:24,uuid:"BB8A9DDD-78FE-4A8C-A807-428BFA3940D0"}
  */
 function getEnvironmentProperty(name) {
 	var value = Packages.java.lang.System.getenv(name);
@@ -462,13 +489,20 @@ function getEnvironmentProperty(name) {
 /**
  * @public
  * @param {String} name
- * @param {String} value
+ * @param {String} newValue
  *
- * @properties={typeid:24,uuid:"574A1354-376C-4568-B39D-7B96093C450C"}
+ * @properties={typeid:24,uuid:"2AFDEE70-ECC3-4483-A275-86D4989CEFEA"}
  */
-function setServoyProperty(name, value) {
+function setServoyProperty(name, newValue) {
+	var versionStr = application.getVersion().trim();
+	var servoyVersion = utils.stringToNumber(versionStr.trim().split('.').map(function(value) {return (value.length < 2 ? ("0" + value) : value)}).join(''));
 	var instance = Packages.com.servoy.j2db.util.Settings.getInstance();
-	instance.put(name, value);
+	if(servoyVersion < 2025060) {
+		instance.put(name, newValue);
+	} else {
+		instance.setProperty(name, newValue);
+	}
+	
 	instance.save();
 }
 
@@ -492,9 +526,9 @@ function initCloneServersBasedOnDatabaseInfo(randomServoyServerName) {
 		/**@type {String} */
 		var comment = ds.getValue(i,2);
 		if(comment && comment.trim().startsWith('{') && comment.trim().endsWith('}')) {
-			/**@type {{cloneFromSVYName: String, SVYName: String, env: String}} */
+			/**@type {{cloneFromSVYName: String, SVYName: String}} */
 			var parsedData = JSON.parse(comment);
-			if(parsedData.cloneFromSVYName && parsedData.SVYName && parsedData.env && !databaseManager.getServerNames().includes(parsedData.SVYName) && parsedData.env == scopes.svyCloud.getCurrentEnvironment()) {
+			if(parsedData.cloneFromSVYName && parsedData.SVYName && !databaseManager.getServerNames().includes(parsedData.SVYName)) {
 				createNewCloneOfDatabase(parsedData.cloneFromSVYName, postgresServerName, parsedData.SVYName);
 			}
 		}
@@ -506,20 +540,21 @@ function initCloneServersBasedOnDatabaseInfo(randomServoyServerName) {
  * @param {String} originalDBServoyName
  * @param {String} newDBNamePostgres
  * @param {String} [newDBNameServoyName] when empty 'newDBNamePostgres' will be used
- *
+ * @return {Boolean}
+ * 
  * @properties={typeid:24,uuid:"068BA581-0335-4C93-96C2-A1BAAC12A29F"}
  */
 function createNewCloneOfDatabase(originalDBServoyName,newDBNamePostgres, newDBNameServoyName ) {
-	if(!databaseManager.getServerNames().includes(originalDBServoyName)) {
+	var allDBNames = datasources.db['allnames'] || [];
+	if(!allDBNames.includes(originalDBServoyName)) {
 		application.output('Given originalDB: ' + originalDBServoyName + " doesn't exist within this servoy configuration");
-		return;
+		return false;
 	}
 	
-	if(databaseManager.getServerNames().includes((newDBNameServoyName||newDBNamePostgres))) {
+	if(allDBNames.includes((newDBNameServoyName||newDBNamePostgres))) {
 		application.output('Ignore generating properties config for database: ' + (newDBNameServoyName||newDBNamePostgres) + ' already exists', LOGGINGLEVEL.DEBUG);
-		return;
+		return false;
 	}
-	
 	
 	var currentServerConfig = Packages.com.servoy.j2db.server.shared.ApplicationServerRegistry.get().getServerManager().getServerConfig(originalDBServoyName);
 	var Builder = new Packages.com.servoy.j2db.persistence.ServerConfig.Builder(currentServerConfig);
@@ -531,8 +566,10 @@ function createNewCloneOfDatabase(originalDBServoyName,newDBNamePostgres, newDBN
 	Packages.com.servoy.j2db.server.shared.ApplicationServerRegistry.get().getServerManager().createServer(newDbServer);
 	Packages.com.servoy.j2db.server.shared.ApplicationServerRegistry.get().getServerManager().saveServerConfig(null,newDbServer);
 	
-	var sql = 'COMMENT ON DATABASE "' + newDBNamePostgres + '" IS \'{"cloneFromSVYName": "' + originalDBServoyName + '", "SVYName": "' + (newDBNameServoyName||newDBNamePostgres) + '", "env": "' + scopes.svyCloud.getCurrentEnvironment() +'"}\';'
+	var sql = 'COMMENT ON DATABASE "' + newDBNamePostgres + '" IS \'{"cloneFromSVYName": "' + originalDBServoyName + '", "SVYName": "' + (newDBNameServoyName||newDBNamePostgres) + '"}\';'
 	plugins.rawSQL.executeSQL(originalDBServoyName,sql);
+	
+	return true;
 }
 
 /**
