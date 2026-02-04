@@ -155,7 +155,7 @@ function getCurrentEnvironment() {
 	if(application.isInDeveloper()) {
 		return CLOUD_ENVIRONMENT_TYPES.DEVELOP;
 	} else {
-		var currentEnv = scopes.svyDeployUtils.getEnvironmentProperty('ENVIRONMENT');
+		var currentEnv = scopes.svyDeployUtils.getEnvironmentProperty('ENVIRONMENT')||CLOUD_ENVIRONMENT_TYPES.DEVELOP;
 		var matchedKey = Object.keys(CLOUD_ENVIRONMENT_TYPES).filter(function(item) {
 			return CLOUD_ENVIRONMENT_TYPES[item] == currentEnv.toLowerCase()
 		})
