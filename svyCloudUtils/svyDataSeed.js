@@ -710,7 +710,7 @@ function runDataseedFromMedia(clearTablesNotInSeed = false, dataseedFile, dbName
                             return;
                         }
                         if (deleteExistingData) {
-                            if (isMicrosoftDB(mediaItem.dbName) || isProgressDB(mediaItem.dbName)) {
+                            if (!isPostgresDB(mediaItem.dbName)) {
                                 truncateStatements.push('delete from ' + jsTable.getQuotedSQLName() + ';');
                             } else {
                                 truncateStatements.push('TRUNCATE TABLE ' + jsTable.getQuotedSQLName() + ' CASCADE;');
@@ -853,11 +853,17 @@ function importCsvFile(dbName, tableName, file, dbTimeZone, statusCallBackFuncti
                 //Calculate optimal batch size per database and column count
                 if (isProgressDB(dbName)) {
                     batchSize = 1;  //Progress: can only do 1 INSERT per statement
-                } else if (isMicrosoftDB(dbName) || isPostgresDB(dbName)) {
+                } else if (isPostgresDB(dbName)) {
                 	if(hasMediaColumn) {
                 		batchSize = 100;
                 	} else {
                 		batchSize = 2500;
+                	}
+                } else {
+                	if(hasMediaColumn) {
+                		batchSize = 100;
+                	} else {
+                		batchSize = 1000;
                 	}
                 }
             }
@@ -1083,7 +1089,7 @@ function executeQuery(dbName, table, queryToExec, noAsync) {
     var postInsertSQL = '';
     if (isMicrosoftDB(dbName)) {
         // enable/disable identity insert
-        if (hasDatabaseIdentity(table)) {
+        if (table && hasDatabaseIdentity(table)) {
             preInsertSQL += 'SET IDENTITY_INSERT ' + table.getQuotedSQLName() + ' ON;';
             postInsertSQL += 'SET IDENTITY_INSERT ' + table.getQuotedSQLName() + ' OFF;'
         }
