@@ -20,7 +20,10 @@ function copyReportsToServer() {
 }
 
 /**
- * @param database
+ * Drops all tables in the public schema of a Postgres database and reloads the data model.
+ * WARNING: This permanently deletes all data in all tables. Never run this in a production environment.
+ * @public
+ * @param {String} database - The Servoy database server name to clear.
  *
  * @properties={typeid:24,uuid:"4C8C9541-CD2E-41A9-9775-62C53EE48ABF"}
  */
@@ -64,21 +67,23 @@ var DB_IMPORT_TYPE = {
 	VERSION: 'V'
 }
 /**
- * Method to run DB Migration on postImport with version store.
- * All SQL Files should be located in the folder `database-migration` and should be named as follow:
+ * Runs versioned SQL migration files stored in the solution's media library.
+ * Call this during onSolutionOpen to ensure the database schema is at the correct version before the application starts.
  *
- * Files Starting with V are version files.. files with R are repeat files and will always execute.
- * Example Version naming V__1__dbName__myDescription
- * Example Repeat naming R__1__dbName__myDescription
+ * Migration files must be named using double underscores as separators (single underscore will not be parsed):
+ *   ${type}__${version}__${ServoyDBName}__${description}.sql
  *
- * There should be double _ between all name parts to correctly parse then, when not there the file will be ignored.
+ * - V (version): runs once in ascending order. Once applied, it will never run again.
+ * - R (repeat): runs on every deployment, as long as its version is at or below the current version.
  *
- * Files will be sorted on versionnumber and execute once when it are version files.
+ * The ServoyDBName part must exactly match an existing Servoy database server name (as configured in datasources.db).
+ * Duplicate version numbers for the same database will throw an error before any SQL is executed.
+ * After all migrations complete, all database server data models are reloaded automatically.
  *
  * @public
  *
- * @param {String} [versionTableName] tableName to store the version data, when this is set it will not be stored in the servoy.properties file
- * @param {String} [migrationFilesFolder] optional custom media folder path instead of the default "database-migration."
+ * @param {String} [versionTableName] Table name to store the version history. When set, versions are tracked in the database instead of servoy.properties. The table is created automatically on first run (not supported in Servoy Developer — create it manually).
+ * @param {String} [migrationFilesFolder] Custom media folder path. Defaults to 'database-migration'.
  *
  * @properties={typeid:24,uuid:"89B79D43-CD47-4476-8ECE-0651A28AD263"}
  */
@@ -252,7 +257,7 @@ function getTableNamesDataChangesAndTriggerFlush(fileContent, serverName) {
  */
 function getAllDBs(mainDB) {
 	if(application.isInDeveloper()) {
-	return [mainDB].concat(databaseManager.getDataModelClonesFrom(mainDB));
+		return [mainDB].concat(databaseManager.getDataModelClonesFrom(mainDB));
 	} else {
 		var allClones = databaseManager.getDataModelClonesFrom(mainDB);
 		var allActiveDatabases = plugins.maintenance.getServerNames(true,true);
@@ -289,10 +294,13 @@ function createVersionTable(serverName, tableName) {
 }
 
 /**
+ * Returns the current migration version for a given database server.
+ * When both serverName and tableName are provided, the version is read from the version table in the database.
+ * When tableName is omitted, the version is read from servoy.properties using key 'SERVERNAME.DB_VERSION' or 'DB_VERSION'.
+ * Returns 0 when no version has been stored yet.
  * @public 
- * @param {String} [serverName]
- * @param {String} [tableName]
- *
+ * @param {String} [serverName] The Servoy database server name.
+ * @param {String} [tableName] The version table name. When omitted, falls back to servoy.properties.
  * @return {Number}
  * @properties={typeid:24,uuid:"B14FE757-40B3-44E8-A647-8817212E8F3E"}
  */
@@ -446,9 +454,11 @@ function sortVersion(a, b) {
 }
 
 /**
+ * Returns a value from servoy.properties by name.
+ * Handles version compatibility: uses the legacy Settings API for Servoy versions before 2025.06, and application.getServoyProperty() for 2025.06 and newer.
+ * Returns null when the property is not set.
  * @public
- * @param {String} name
- *
+ * @param {String} name - The property key to read.
  * @return {String}
  *
  * @properties={typeid:24,uuid:"279627B0-9B3E-47A4-B00F-E5BD32E6A3C5"}
@@ -467,9 +477,10 @@ function getServoyProperty(name) {
 }
 
 /**
+ * Returns a Java system property value (JVM-level, e.g. 'java.io.tmpdir').
+ * Returns null when the property is not set.
  * @public
- * @param {String} name
- *
+ * @param {String} name - The system property key to read.
  * @return {String}
  *
  * @properties={typeid:24,uuid:"B1B64E55-4E90-4F8B-BABE-9EE5F980C374"}
@@ -483,9 +494,10 @@ function getSystemProperty(name) {
 }
 
 /**
+ * Returns an OS environment variable value.
+ * Returns null when the variable is not set.
  * @public
- * @param {String} name
- *
+ * @param {String} name - The environment variable name to read.
  * @return {String}
  *
  * @properties={typeid:24,uuid:"BB8A9DDD-78FE-4A8C-A807-428BFA3940D0"}
@@ -499,9 +511,11 @@ function getEnvironmentProperty(name) {
 }
 
 /**
+ * Sets a value in servoy.properties and saves the file immediately.
+ * Handles version compatibility: uses the legacy Settings API for Servoy versions before 2025.06, and instance.setProperty() for 2025.06 and newer.
  * @public
- * @param {String} name
- * @param {String} newValue
+ * @param {String} name - The property key to set.
+ * @param {String} newValue - The value to store.
  *
  * @properties={typeid:24,uuid:"2AFDEE70-ECC3-4483-A275-86D4989CEFEA"}
  */
@@ -518,8 +532,17 @@ function setServoyProperty(name, newValue) {
 }
 
 /**
+ * Scans all Postgres databases accessible from the given server and automatically registers Servoy server configurations for cloned databases.
+ * The mechanism works via the Postgres COMMENT ON DATABASE metadata — no extra configuration files needed.
+ * For each database whose description contains a JSON object with keys 'cloneFromSVYName' and 'SVYName',
+ * a new Servoy server configuration is created if it does not already exist.
+ *
+ * Set the description on a Postgres database using:
+ *   COMMENT ON DATABASE "mydb_clone" IS '{"cloneFromSVYName": "original_server", "SVYName": "clone_server_name"}';
+ *
+ * Only supported for Postgres databases. Call once during onSolutionOpen.
  * @public 
- * @param {String} randomServoyServerName
+ * @param {String} randomServoyServerName - Any Servoy server name with access to pg_catalog on the target Postgres instance.
  * 
  * @properties={typeid:24,uuid:"FC3E751E-5588-4274-8ADA-9CFB532ED1D1"}
  */
@@ -547,10 +570,15 @@ function initCloneServersBasedOnDatabaseInfo(randomServoyServerName) {
 }
 
 /**
+ * Creates a new Servoy server configuration pointing to a cloned Postgres database.
+ * The new server inherits all JDBC connection settings from the original, with only the database name replaced.
+ * Also writes a COMMENT ON DATABASE back to Postgres to record the clone relationship as JSON metadata,
+ * so that initCloneServersBasedOnDatabaseInfo() can rediscover this configuration on future startups.
+ * Returns false when the original server does not exist or the new server name already exists.
  * @public 
- * @param {String} originalDBServoyName
- * @param {String} newDBNamePostgres
- * @param {String} [newDBNameServoyName] when empty 'newDBNamePostgres' will be used
+ * @param {String} originalDBServoyName - The existing Servoy server name to clone the JDBC config from.
+ * @param {String} newDBNamePostgres - The actual Postgres database name for the new server.
+ * @param {String} [newDBNameServoyName] - The Servoy server name to register. Defaults to newDBNamePostgres when omitted.
  * @return {Boolean}
  * 
  * @properties={typeid:24,uuid:"068BA581-0335-4C93-96C2-A1BAAC12A29F"}

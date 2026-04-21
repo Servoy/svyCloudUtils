@@ -58,9 +58,12 @@ var currentWorkMem = null;
 var currentWorkers = null;
 
 /**
+ * Returns the current PostgreSQL work_mem setting for the given database.
+ * The result is cached after the first call to avoid repeated DB queries.
+ *
  * @public 
- * @param {String} dbName
- * @return {{value: Number, size: String}}
+ * @param {String} dbName - The Servoy server name of a PostgreSQL database.
+ * @return {{value: Number, size: String}} Object with numeric value and unit string (e.g. {value: 4096, size: 'kB'}).
  * @properties={typeid:24,uuid:"673DEB5E-2DCB-4061-8D02-778A82A43FD7"}
  */
 function getCurrentWorkMem(dbName) {
@@ -91,14 +94,18 @@ function getCurrentWorkers(dbName) {
 }
 
 /**
+ * Shows a dialog prompting the user to select a database, then calls {@link createDataSeedFile} for the selected DB.
+ * Use this function in Developer to interactively generate a dataseed for one database.
+ * For non-interactive or server-side export, call {@link createDataSeedFile} directly with the target DB name.
+ *
  * @public
- * @param {String} [customPathToSvyCloudUtils]
- * @param {Boolean} [returnDataseedFile] when true, dataseed will not be written to workspace but return as jsFile
- * @param {Boolean} [runFullTableRecalc] optional boolean to do a full table recalc when having storedcalcs.. will be heavy when there is a lot of data
- * @param {Boolean} [noZip] optional when true the export files will not be zipped, the folder with  plain csv will be part of the repository (do not use with large dataseed files)
- * @param {Array<String>} [excludeTableNames] Array with table names to filter for export, it has support for % as wildcard
- * @param {RegExp} [columnNameRegex] optional regex check to improve performance of column data check, csv can't have linebreaks etc, so we convert data when we find that in the content. When this regex matches on columnname it will ignore that check
- * @return {plugins.file.JSFile} zipped dataseed file
+ * @param {String} [customPathToSvyCloudUtils] - Override the default workspace path for dataseed output.
+ * @param {Boolean} [returnDataseedFile] - When true, the seed file is written to a temp folder and returned instead of the workspace. Defaults to true outside Developer, false in Developer.
+ * @param {Boolean} [runFullTableRecalc] - When true, recalculates all stored calculations before export. Expensive with large data sets.
+ * @param {Boolean} [noZip] - When true, exports plain CSV files instead of a zip archive. Do not use for large datasets.
+ * @param {Array<String>} [excludeTableNames] - Table names to skip during export. Supports % wildcard (e.g. 'temp_%'). Always excludes tables starting with 'temp_'.
+ * @param {RegExp} [columnNameRegex] - Skip the linebreak/comma check for columns matching this regex. Use to improve performance when you know certain columns are safe.
+ * @return {plugins.file.JSFile} The exported dataseed zip file (or folder when noZip is true).
  *
  * @properties={typeid:24,uuid:"B89674BA-49DE-4B32-829B-2181B69D44A5"}
  */
@@ -114,9 +121,12 @@ function createDataSeedFiles(customPathToSvyCloudUtils, returnDataseedFile, runF
 }
 
 /**
+ * Removes an existing dataseed file or folder from the dataseed storage location.
+ * Pass a specific dataseed name to remove only that one, or pass boolean true to remove all dataseeds.
+ *
  * @public
- * @param {String|Boolean} dataseedToRemove Dataseed to Remove, boolean true will remove all
- * @param {String} [customDataseedPath]
+ * @param {String|Boolean} dataseedToRemove - The name of the dataseed to remove (without extension), or boolean true to remove all dataseeds.
+ * @param {String} [customDataseedPath] - Override the default workspace path. Uses the same path logic as {@link createDataSeedFile}.
  * @properties={typeid:24,uuid:"EA5C78EC-8BD9-47AB-B45C-AF24BBC470B7"}
  */
 function removeExistingDataSeedFile(dataseedToRemove, customDataseedPath) {
@@ -321,20 +331,25 @@ function addOffsetArgs(dbName, args, offset, largeDataField, limitTableCount) {
     }
 }
 /**
+ * Exports the data of a specific database to a dataseed zip file (or folder).
+ * Iterates all tables, skips metadata, i18n, and excluded tables, and writes CSV files.
+ * When returnDataseedFile is true (default outside Developer), the file is written to a temp folder and returned.
+ * When running in Developer with returnDataseedFile false (default), files are written to the workspace medias folder.
+ *
  * @public
- * @param {String} selectedDB
- * @param {String} [customPathToSvyCloudUtils]
- * @param {Boolean} [returnDataseedFile] when true, dataseed will not be written to workspace but return as jsFile
- * @param {Array<{fieldName: String, value: String|Number, [required]:Boolean}>} [additionalFilters] when given the query will add this to the where class (when field exists)
- * 			Fieldname: The DB Field that needs to be filtered
- * 			Value: The filter value
- * 			Required: Default false, when required it true and the field is missing in the table it will skip the table
- * @param {Boolean} [runFullTableRecalc] optional boolean to do a full table recalc when having storedcalcs.. will be heavy when there is a lot of data
- * @param {Number} [limitTableCount] optional integer value to limit the number of records returned per table, useful for getting sample data
- * @param {Boolean} [noZip] optional when true the export files will not be zipped, the folder with  plain csv will be part of the repository (do not use with large dataseed files)
- * @param {Array<String>} [excludeTableNames] Array with table names to filter for export, it has support for % as wildcard.
- * @param {RegExp} [columnNameRegex] optional regex check to improve performance of column data check, csv can't have linebreaks etc, so we convert data when we find that in the content. When this regex matches on columnname it will ignore that check
- * @return {plugins.file.JSFile} zipped dataseed file
+ * @param {String} selectedDB - The Servoy server name of the database to export.
+ * @param {String} [customPathToSvyCloudUtils] - Override the default workspace/medias path for dataseed output.
+ * @param {Boolean} [returnDataseedFile] - When true, write to temp folder and return the file. Defaults to true outside Developer, false in Developer.
+ * @param {Array<{fieldName: String, value: String|Number, [required]:Boolean}>} [additionalFilters] - Row-level filters added to the export query.
+ * 			fieldName: The DB column to filter on.
+ * 			value: The filter value. Prefix with 'SELECT ' to use a subquery.
+ * 			required: When true, tables missing this column are skipped entirely (not just unfiltered).
+ * @param {Boolean} [runFullTableRecalc] - When true, recalculates stored calculations and calls onRecordUpdate before export. Expensive with large data sets.
+ * @param {Number} [limitTableCount] - Limit the number of rows exported per table. Useful for generating sample/development dataseeds.
+ * @param {Boolean} [noZip] - When true, exports a plain CSV folder instead of a zip. Do not use for large datasets.
+ * @param {Array<String>} [excludeTableNames] - Table names to skip. Supports % wildcard. Always excludes 'temp_%' tables.
+ * @param {RegExp} [columnNameRegex] - Skip the linebreak/comma safety check for columns matching this regex to improve performance.
+ * @return {plugins.file.JSFile} The exported dataseed zip file, or folder when noZip is true. Returns null when selectedDB is not provided.
  *
  * @properties={typeid:24,uuid:"67C8AFB5-1DE1-43D0-BFA9-4AFBDFFB50E3"}
  */
@@ -560,9 +575,12 @@ function createDataSeedFile(selectedDB, customPathToSvyCloudUtils, returnDatasee
 }
 
 /**
+ * Wraps a dataseed file (JSMedia or JSFile) with its associated database name and utility methods.
+ * Used internally by {@link getExistingDataseeds} and {@link runDataseedFromMedia}.
+ *
  * @constructor
- * @param {JSMedia|plugins.file.JSFile} file
- * @param {String} dbName
+ * @param {JSMedia|plugins.file.JSFile} file - The dataseed file, either from Servoy media or a filesystem file.
+ * @param {String} dbName - The Servoy server name this dataseed targets.
  *
  * @properties={typeid:24,uuid:"561F6E1D-C532-4955-8C88-06EDD46DE974"}
  */
@@ -618,6 +636,9 @@ function DataseedFile(file, dbName) {
 }
 
 /**
+ * Returns all dataseed files currently stored in the solution's media library.
+ * Scans the media list for entries under the 'dataseeds' path and wraps each as a {@link DataseedFile}.
+ * Used by {@link runDataseedFromMedia} to discover available dataseeds when no explicit file is provided.
  *
  * @public
  * @return {Array<DataseedFile>}
@@ -641,12 +662,16 @@ function getExistingDataseeds() {
 }
 
 /**
- * @param {Boolean} [clearTablesNotInSeed] (Default: False) optional Clear all tables that are not in the dataseed zip file of the db server.
- * @param {Array<plugins.file.JSFile|JSMedia>} [dataseedFile] file to import instead of all files from media
- * @param {String} [dbNameToImport] databaseName to import the given dataseedfile (only works when other param is set)
- * @param {Boolean} [executeInTransaction] (Default: False) When true execution will be done in an single db transaction
- * @param {Boolean} [deleteExistingData] (Default: True) When true existing data in tables will be cleared
- * @param {Function} [statusCallBackFunction]
+ * Imports dataseed files into the configured databases.
+ * When no dataseedFile or dbNameToImport is provided, all dataseed files found in the solution media are imported.
+ * Supports zip archives and plain CSV folders. Handles table truncation, transaction mode, and cache flushing after import.
+ *
+ * @param {Boolean} [clearTablesNotInSeed] - (Default: false) When true, truncates tables that exist in the DB but are not present in the dataseed.
+ * @param {Array<plugins.file.JSFile|JSMedia>} [dataseedFile] - Specific file(s) to import. When omitted, all media dataseeds are used.
+ * @param {String} [dbNameToImport] - Target database for the given dataseedFile. Required when dataseedFile is provided.
+ * @param {Boolean} [executeInTransaction] - (Default: false) When true, wraps all inserts in a single DB transaction. Rolls back on failure.
+ * @param {Boolean} [deleteExistingData] - (Default: true) When true, truncates each table before importing.
+ * @param {Function} [statusCallBackFunction] - Optional callback invoked during import. Called with (status, tableName, current, total).
  * @public
  * @properties={typeid:24,uuid:"9E1D40BE-49BB-401D-85FF-B4E5FF920547"}
  */

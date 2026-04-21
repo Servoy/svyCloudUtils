@@ -1,54 +1,60 @@
 /**
- * @private 
+ * @protected
  * @type {Number}
+ * Build number injected by the Servoy Cloud pipeline at build time. Remains 0 when not running in a pipeline build.
  *
  * @properties={typeid:35,uuid:"3A5947EA-BC8E-4A9A-9A36-92CBA477B860",variableType:4}
  */
 var JENKINS_BUILDNR = 0;
 
 /**
- * @private 
+ * @protected
  * @type {String}
+ * Build date injected by the Servoy Cloud pipeline at build time, formatted as 'dd-MM-yyyy HH:mm:ss'. Empty when not running in a pipeline build.
  *
  * @properties={typeid:35,uuid:"01DD3C7F-9EBE-4BC6-A937-F454D4D5BBAD"}
  */
 var JENKINS_BUILDDATE = '';
 
 /**
- * @private 
+ * @protected
  * @type {String}
+ * SVN revision injected by the Servoy Cloud pipeline at build time. Empty when not running in a pipeline build or when using Git.
  *
  * @properties={typeid:35,uuid:"67D9B6F0-C160-4C20-AD5A-9781BD7E252B"}
  */
 var SVN_REVISION = '';
 
 /**
- * @private 
+ * @protected
  * @type {String}
+ * Git commit hash injected by the Servoy Cloud pipeline at build time. Empty when not running in a pipeline build or when using SVN.
  *
  * @properties={typeid:35,uuid:"95EE8DC1-BE70-4543-B404-4D8C8281134A"}
  */
 var GIT_COMMIT = '';
 
 /**
- * @private 
+ * @protected
  * @type {String}
+ * Git branch name injected by the Servoy Cloud pipeline at build time. Empty when not running in a pipeline build or when using SVN.
  *
  * @properties={typeid:35,uuid:"9ED44650-AC03-4CCB-9212-070A03324EE4"}
  */
 var GIT_BRANCH = '';
 
 /**
- * @private 
+ * @protected
  * @type {String}
+ * SVN branch name injected by the Servoy Cloud pipeline at build time. Empty when not running in a pipeline build or when using Git.
  *
  * @properties={typeid:35,uuid:"9DE3357F-1D81-49AA-BFC0-7D534433FA4A"}
  */
 var SVN_BRANCH = '';
 
 /**
- * All supported Servoy Cloud Environment types
- * @public 
+ * All supported Servoy Cloud environment types.
+ * @public
  * @properties={typeid:35,uuid:"9E9CFC02-D483-444B-9CBC-EABA6077528B",variableType:-4}
  */
 var CLOUD_ENVIRONMENT_TYPES = {
@@ -61,6 +67,8 @@ var CLOUD_ENVIRONMENT_TYPES = {
 }
 
 /**
+ * Returns the build number injected by the Servoy Cloud pipeline.
+ * Returns null when not running in a pipeline build (e.g. in Servoy Developer).
  * @public 
  * @return {Number}
  * 
@@ -75,6 +83,8 @@ function getJenkinsBuildNr() {
 }
 
 /**
+ * Returns the build date injected by the Servoy Cloud pipeline.
+ * Returns null when not running in a pipeline build (e.g. in Servoy Developer).
  * @public 
  * @return {Date}
  * 
@@ -89,6 +99,8 @@ function getJenkinsBuildDate() {
 }
 
 /**
+ * Returns the SVN revision injected by the Servoy Cloud pipeline.
+ * Returns null when not running in a pipeline build or when using Git instead of SVN.
  * @public 
  * @return {String}
  * 
@@ -103,6 +115,8 @@ function getSvnRevision() {
 }
 
 /**
+ * Returns the Git commit hash injected by the Servoy Cloud pipeline.
+ * Returns null when not running in a pipeline build or when using SVN instead of Git.
  * @public 
  * @return {String}
  * 
@@ -117,6 +131,8 @@ function getGitCommit() {
 }
 
 /**
+ * Returns the Git branch name injected by the Servoy Cloud pipeline.
+ * Returns null when not running in a pipeline build or when using SVN instead of Git.
  * @public 
  * @return {String}
  * 
@@ -131,6 +147,8 @@ function getGitBranch() {
 }
 
 /**
+ * Returns the SVN branch name injected by the Servoy Cloud pipeline.
+ * Returns null when not running in a pipeline build or when using Git instead of SVN.
  * @public 
  * @return {String}
  * 
@@ -145,8 +163,9 @@ function getSVNBranch() {
 }
 
 /**
- * Function returning the current Environment type when running in Servoy Cloud.
- * Developer will always return type `dev`
+ * Returns the current environment type when running in Servoy Cloud.
+ * Always returns 'dev' when running in Servoy Developer.
+ * Returns one of the values defined in scopes.svyCloud.CLOUD_ENVIRONMENT_TYPES.
  * @public 
  * @return {CLOUD_ENVIRONMENT_TYPES|String}
  * @properties={typeid:24,uuid:"3FBCA3C7-8F13-4A6F-8D00-762E9B9D8EFF"}
