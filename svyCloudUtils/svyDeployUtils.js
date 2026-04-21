@@ -251,7 +251,17 @@ function getTableNamesDataChangesAndTriggerFlush(fileContent, serverName) {
  * @properties={typeid:24,uuid:"C7C2BA2D-7268-4B2C-B3AD-396D13C364B4"}
  */
 function getAllDBs(mainDB) {
+	if(application.isInDeveloper()) {
 	return [mainDB].concat(databaseManager.getDataModelClonesFrom(mainDB));
+	} else {
+		var allClones = databaseManager.getDataModelClonesFrom(mainDB);
+		var allActiveDatabases = plugins.maintenance.getServerNames(true,true);
+		
+		allClones = allClones.filter(function(cloneName) {
+			return allActiveDatabases.includes(cloneName);
+		});
+		return [mainDB].concat(allClones);
+	}
 }
 
 /**
