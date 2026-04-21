@@ -166,3 +166,69 @@ function getCurrentEnvironment() {
 	}
 	return CLOUD_ENVIRONMENT_TYPES.DEVELOP;
 }
+
+/**
+ * Sets the maximum idle time (in minutes) for the current client session in Servoy Cloud.
+ * Do not call application.addClientInfo() directly — this function handles deduplication to prevent duplicate entries.
+ * @public
+ * @param {Number} timeInMinutes - The maximum idle time in minutes.
+ *
+ * @properties={typeid:24,uuid:"65E642D0-E41F-49CD-9756-3AEFE83ADE86"}
+ */
+function setMaxIdleTime(timeInMinutes) {
+	const existingValues = plugins.clientmanager.getClientInformation().getClientInfos();
+	/** @type {String} */
+	const clientInfo = existingValues.find(function(elementValue) {
+		return elementValue.startsWith('SERVOY_CLIENT_MAX_IDLE_TIME:');
+	});
+
+	if (clientInfo) {
+		application.removeClientInfo(clientInfo);
+	}
+
+	application.addClientInfo('SERVOY_CLIENT_MAX_IDLE_TIME:' + timeInMinutes);
+}
+
+/**
+ * Sets the tenant value for the current client session in Servoy Cloud.
+ * Do not call application.addClientInfo() directly — this function handles deduplication to prevent duplicate entries.
+ * @public
+ * @param {String} value - The tenant value to set.
+ *
+ * @properties={typeid:24,uuid:"0B3620B6-5AE8-465F-B986-0B251BEDBAB5"}
+ */
+function setTenantValue(value) {
+	const existingValues = plugins.clientmanager.getClientInformation().getClientInfos();
+	/** @type {String} */
+	const clientInfo = existingValues.find(function(elementValue) {
+		return elementValue.startsWith('SVYC_TENANTVALUE:');
+	});
+
+	if (clientInfo) {
+		application.removeClientInfo(clientInfo);
+	}
+
+	application.addClientInfo('SVYC_TENANTVALUE:' + value);
+}
+
+/**
+ * Sets the tenant name for the current client session in Servoy Cloud.
+ * Do not call application.addClientInfo() directly — this function handles deduplication to prevent duplicate entries.
+ * @public
+ * @param {String} value - The tenant name to set.
+ *
+ * @properties={typeid:24,uuid:"73DD8F7F-622F-4075-80BD-C726269E47A9"}
+ */
+function setTenantName(value) {
+	const existingValues = plugins.clientmanager.getClientInformation().getClientInfos();
+	/** @type {String} */
+	const clientInfo = existingValues.find(function(elementValue) {
+		return elementValue.startsWith('SVYC_TENANTNAME:');
+	});
+
+	if (clientInfo) {
+		application.removeClientInfo(clientInfo);
+	}
+
+	application.addClientInfo('SVYC_TENANTNAME:' + value);
+}
