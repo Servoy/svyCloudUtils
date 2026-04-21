@@ -1,6 +1,8 @@
-fileVersion:56,
-mustAuthenticate:false,
-name:"svyCloudUtils",
-solutionType:2,
-typeid:43,
-uuid:"9A54DDC2-8A52-4E2B-B905-25DBEC6B8E48"
+{
+    "fileVersion":63,
+    "mustAuthenticate":false,
+    "name":"svyCloudUtils",
+    "solutionType":2,
+    "typeid":43,
+    "uuid":"9A54DDC2-8A52-4E2B-B905-25DBEC6B8E48"
+}

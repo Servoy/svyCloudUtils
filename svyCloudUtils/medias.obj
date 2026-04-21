@@ -1,16 +1,29 @@
 [
 {
-encapsulation:0,
-mimeType:"application/x-sql",
-name:"database-migration/R__1__example__repeatVersion.sql",
-typeid:37,
-uuid:"FDB20485-4D42-4178-B2C0-4966430A640D"
+    "encapsulation":0,
+    "name":".DS_Store",
+    "typeid":37,
+    "uuid":"90A4D5A8-834E-474A-9DBF-90D77DFEDC0A"
 },
 {
-encapsulation:0,
-mimeType:"application/x-sql",
-name:"database-migration/V__1__example__firstVersion.sql",
-typeid:37,
-uuid:"4C2D880B-5382-4F06-9DCD-3C8118AFEFA1"
+    "encapsulation":0,
+    "mimeType":"application/x-sql",
+    "name":"database-migration/R__1__example__repeatVersion.sql",
+    "typeid":37,
+    "uuid":"FDB20485-4D42-4178-B2C0-4966430A640D"
+},
+{
+    "encapsulation":0,
+    "mimeType":"application/x-sql",
+    "name":"database-migration/V__1__example__firstVersion.sql",
+    "typeid":37,
+    "uuid":"4C2D880B-5382-4F06-9DCD-3C8118AFEFA1"
+},
+{
+    "encapsulation":0,
+    "mimeType":"text/plain",
+    "name":"dataseeds/empty.txt",
+    "typeid":37,
+    "uuid":"BBDE51D9-5B8D-4F35-A8BD-1263007A9F1B"
 }
 ]
