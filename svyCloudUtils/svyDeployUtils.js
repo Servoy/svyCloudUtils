@@ -173,7 +173,7 @@ function runDBVersionUpgrade(versionTableName, migrationFilesFolder) {
 					if (migrationFile.type === DB_IMPORT_TYPE.VERSION) {
 						if (migrationFile.version === (nextVersionToApply + 1)) {
 							if (!plugins.rawSQL.executeSQL(dbServerName, '/*IGNORE-SQL-TIMING-LOGGING*/\n' + migrationFile.getFileData())) {
-								throw new Error('Failed to run version migration SQL FILE: ' + migrationFile.name + ' \n' + plugins.rawSQL.getException());
+								throw new Error('Failed to run version migration SQL FILE: ' + migrationFile.name + ' on database: ' + dbServerName + '\nSQL Error:' + plugins.rawSQL.getException());
 							} else {
 								getTableNamesDataChangesAndTriggerFlush(migrationFile.getFileData(), dbServerName)
 							}
@@ -189,7 +189,7 @@ function runDBVersionUpgrade(versionTableName, migrationFilesFolder) {
 					else if (migrationFile.type === DB_IMPORT_TYPE.REPEAT) {
 						if (migrationFile.version <= nextVersionToApply && !executedRepeats[migrationFile.name]) {
 							if (!plugins.rawSQL.executeSQL(dbServerName, '/*IGNORE-SQL-TIMING-LOGGING*/\n' + migrationFile.getFileData())) {
-								throw new Error('Failed to run repeat migration SQL FILE: ' + migrationFile.name + ' \n' + plugins.rawSQL.getException());
+								throw new Error('Failed to run repeat migration SQL FILE: ' + migrationFile.name + ' on database: ' + dbServerName + '\nSQL Error:' + plugins.rawSQL.getException());
 							} else {
 								getTableNamesDataChangesAndTriggerFlush(migrationFile.getFileData(), dbServerName)
 							}
@@ -292,7 +292,7 @@ function getCurrentVersion(serverName, tableName) {
 		if(datasources.db[serverName][tableName]) {
 			/**@type {QBSelect} */
 			var sql = datasources.db[serverName][tableName].createSelect();
-			sql.result.add(sql.columns['versionnumber']);
+			sql.result.add(sql.getColumn('versionnumber'));
 	
 			//Get all data, sorting on int can be different based on DB settings
 			var ds = databaseManager.getDataSetByQuery(sql, -1);
@@ -305,8 +305,11 @@ function getCurrentVersion(serverName, tableName) {
 			application.output("Couldn't find the existing version table. DB Version will be 0.")
 			return 0;
 		}
+		
+		application.output(`Current DB Version for server: ${serverName} is: ${currentVersion}`, LOGGINGLEVEL.INFO);
 	} else {
 		currentVersion = parseInt(getServoyProperty(serverName.toUpperCase() + '.DB_VERSION') || getServoyProperty('DB_VERSION') || '0');
+		application.output(`Current DB Version from properties for server: ${serverName} is: ${currentVersion}`, LOGGINGLEVEL.INFO);
 	}
 	return currentVersion
 }
@@ -441,11 +444,10 @@ function sortVersion(a, b) {
  * @properties={typeid:24,uuid:"279627B0-9B3E-47A4-B00F-E5BD32E6A3C5"}
  */
 function getServoyProperty(name) {
-	var versionStr = application.getVersion().trim();
-	var servoyVersion = utils.stringToNumber(versionStr.trim().split('.').map(function(value) {return (value.length < 2 ? ("0" + value) : value)}).join(''));
+	var servoyVersionNumber = utils.stringToNumber(application.getVersion().trim().split('.').map(function(value) {return (value.length < 2 ? ("0" + value) : value)}).join('').substring(0,6));
 
 	var returnValue;
-	if (servoyVersion < 2025060) {
+	if (servoyVersionNumber < 202506) {
 		returnValue = Packages.com.servoy.j2db.util.Settings.getInstance().get(name);
 	} else {
 		returnValue = application.getServoyProperty(name);
@@ -494,10 +496,9 @@ function getEnvironmentProperty(name) {
  * @properties={typeid:24,uuid:"2AFDEE70-ECC3-4483-A275-86D4989CEFEA"}
  */
 function setServoyProperty(name, newValue) {
-	var versionStr = application.getVersion().trim();
-	var servoyVersion = utils.stringToNumber(versionStr.trim().split('.').map(function(value) {return (value.length < 2 ? ("0" + value) : value)}).join(''));
+	var servoyVersionNumber = utils.stringToNumber(application.getVersion().trim().split('.').map(function(value) {return (value.length < 2 ? ("0" + value) : value)}).join('').substring(0,6));
 	var instance = Packages.com.servoy.j2db.util.Settings.getInstance();
-	if(servoyVersion < 2025060) {
+	if(servoyVersionNumber < 202506) {
 		instance.put(name, newValue);
 	} else {
 		instance.setProperty(name, newValue);

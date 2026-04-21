@@ -26,7 +26,7 @@ var hasAsyncCall = [];
  * @protected 
  * @properties={typeid:35,uuid:"374F753E-86A9-4518-A67A-E571F20A9AB3",variableType:-4}
  */
-var servoyVersionNumber = utils.stringToNumber(application.getVersion().trim().split('.').map(function(value) {return (value.length < 2 ? ("0" + value) : value)}).join(''));
+var servoyVersionNumber = utils.stringToNumber(application.getVersion().trim().split('.').map(function(value) {return (value.length < 2 ? ("0" + value) : value)}).join('').substring(0,6));
 /**
  * @private
  * @return {String}
@@ -65,6 +65,7 @@ var currentWorkers = null;
  */
 function getCurrentWorkMem(dbName) {
 	if(!currentWorkMem) {
+		/**@type {String} */
         var workMem = databaseManager.getDataSetByQuery(dbName,"SELECT current_setting('work_mem');",[],-1).getValue(1,1);
         var workMemValue = parseInt(workMem.split(/\D+/)[0]);
         var workMemSize = workMem.split(/\d+/)[1];
@@ -75,7 +76,7 @@ function getCurrentWorkMem(dbName) {
 }
 
 /**
- * @param dbName
+ * @param {String} dbName
  * @return {{max_parallel_workers: Number, max_parallel_workers_per_gather: Number}}
  * @properties={typeid:24,uuid:"FE87A2A9-9993-42DE-B155-03BD86D5E209"}
  */
@@ -276,7 +277,8 @@ function buildSelectSQL(dbName, jsTable, additionalFilters, columnNameRegex) {
     	queryArgs.pop();
     }
     //Doing replace at the and / in 2 steps to fix issue with fields that match 2 times because of naming.
-    fieldsToReplace.forEach(function (item, index) {
+    fieldsToReplace.forEach(/** @param {String} item 
+    							@param {Number} index */ function (item, index) {
         dbSQL = dbSQL.replace('%%' + index + '%%', item);
     })
 
@@ -424,11 +426,12 @@ function createDataSeedFile(selectedDB, customPathToSvyCloudUtils, returnDatasee
         }
 
         var offset = 0;
+        /**@type {UUID} */
         var lastQueryResultPK;
 		if(jsTable.getColumn(getJSTablePKColumn(jsTable)).getType() != JSColumn.UUID_COLUMN && !jsTable.getColumn(getJSTablePKColumn(jsTable)).hasFlag(JSColumn.UUID_COLUMN)) {
 			lastQueryResultPK = '';
 		} else {
-			if(servoyVersionNumber <= 20230600) {
+			if(servoyVersionNumber <= 202306) {
 				lastQueryResultPK = application.getUUID('00000000-0000-0000-0000-00000000000').toString()
 			} else {
 				lastQueryResultPK = application.getUUID('00000000-0000-0000-0000-00000000000')
@@ -486,7 +489,7 @@ function createDataSeedFile(selectedDB, customPathToSvyCloudUtils, returnDatasee
     		if(jsTable.getColumn(getJSTablePKColumn(jsTable)).getType() != JSColumn.UUID_COLUMN && !jsTable.getColumn(getJSTablePKColumn(jsTable)).getType() != JSColumn.TEXT && !jsTable.getColumn(getJSTablePKColumn(jsTable)).hasFlag(JSColumn.UUID_COLUMN)) {
     			lastQueryResultPK = dataset.getValue(dataset.getMaxRowIndex(), dataset.getColumnNames().indexOf(getJSTablePKColumn(jsTable)) + 1);
     		} else {
-    			if(servoyVersionNumber <= 20230600) {
+    			if(servoyVersionNumber <= 202306) {
     				lastQueryResultPK = application.getUUID(dataset.getValue(dataset.getMaxRowIndex(), dataset.getColumnNames().indexOf(getJSTablePKColumn(jsTable)) + 1)).toString()
     			} else {
     				lastQueryResultPK = application.getUUID(dataset.getValue(dataset.getMaxRowIndex(), dataset.getColumnNames().indexOf(getJSTablePKColumn(jsTable)) + 1))
@@ -584,7 +587,7 @@ function DataseedFile(file, dbName) {
 
     /**
      * @public
-     * @type {String}
+     * @type {Boolean}
      */
     this.isZipFile = this.fileName.endsWith('.zip');
 
@@ -617,11 +620,12 @@ function DataseedFile(file, dbName) {
 /**
  *
  * @public
- * @return {Array<{DataseedFile}>}
+ * @return {Array<DataseedFile>}
  *
  * @properties={typeid:24,uuid:"F973A092-AF92-4CCD-AD4D-1FCA15B162BD"}
  */
 function getExistingDataseeds() {
+	/**@type {Array<DataseedFile>} */
     var existingDataseeds = [];
     solutionModel.getMediaList().forEach( /**@param {JSMedia} media */ function (media) {
         if (media && media.getName().match('dataseeds')) {
@@ -710,7 +714,7 @@ function runDataseedFromMedia(clearTablesNotInSeed = false, dataseedFile, dbName
                             return;
                         }
                         if (deleteExistingData) {
-                            if (!isPostgresDB(mediaItem.dbName)) {
+                            if (isMicrosoftDB(mediaItem.dbName) || isProgressDB(mediaItem.dbName)) {
                                 truncateStatements.push('delete from ' + jsTable.getQuotedSQLName() + ';');
                             } else {
                                 truncateStatements.push('TRUNCATE TABLE ' + jsTable.getQuotedSQLName() + ' CASCADE;');
@@ -853,17 +857,11 @@ function importCsvFile(dbName, tableName, file, dbTimeZone, statusCallBackFuncti
                 //Calculate optimal batch size per database and column count
                 if (isProgressDB(dbName)) {
                     batchSize = 1;  //Progress: can only do 1 INSERT per statement
-                } else if (isPostgresDB(dbName)) {
+                } else if (isMicrosoftDB(dbName) || isPostgresDB(dbName)) {
                 	if(hasMediaColumn) {
                 		batchSize = 100;
                 	} else {
                 		batchSize = 2500;
-                	}
-                } else {
-                	if(hasMediaColumn) {
-                		batchSize = 100;
-                	} else {
-                		batchSize = 1000;
                 	}
                 }
             }
@@ -916,7 +914,7 @@ function importCsvFile(dbName, tableName, file, dbTimeZone, statusCallBackFuncti
 										}
 										return 'NULL';
 									case JSColumn.INTEGER:
-										var returnInt = ['', 'Infinity', 'NaN'].includes(value.toString()) ? 'NULL' : parseInt(value.toString(), 10);
+										var returnInt = ['', 'Infinity', 'NaN'].includes(value) ? 'NULL' : parseInt(value, 10);
 										if (isNaN(returnInt)) {
 											returnInt = 'NULL';
 										} else if (returnInt !== 'NULL') {
@@ -925,7 +923,7 @@ function importCsvFile(dbName, tableName, file, dbTimeZone, statusCallBackFuncti
 										}
 										return returnInt;
 									case JSColumn.NUMBER:
-										var returnNum = ['', 'Infinity', 'NaN'].includes(value.toString()) ? 'NULL' : parseFloat(value.toString());
+										var returnNum = ['', 'Infinity', 'NaN'].includes(value) ? 'NULL' : parseFloat(value);
 										if (isNaN(returnNum)) {
 											returnNum = 'NULL';
 										}
@@ -1089,7 +1087,7 @@ function executeQuery(dbName, table, queryToExec, noAsync) {
     var postInsertSQL = '';
     if (isMicrosoftDB(dbName)) {
         // enable/disable identity insert
-        if (table && hasDatabaseIdentity(table)) {
+        if (hasDatabaseIdentity(table)) {
             preInsertSQL += 'SET IDENTITY_INSERT ' + table.getQuotedSQLName() + ' ON;';
             postInsertSQL += 'SET IDENTITY_INSERT ' + table.getQuotedSQLName() + ' OFF;'
         }
@@ -1166,6 +1164,7 @@ function executeQuery(dbName, table, queryToExec, noAsync) {
 
 /**
  * @private 
+ * @param {String} dbName
  * @return {String}
  * @properties={typeid:24,uuid:"731C3C9F-D487-4245-9425-E3A41744879A"}
  */
@@ -1193,6 +1192,7 @@ function getDBTimeZone(dbName) {
  * @properties={typeid:24,uuid:"613FBEAA-543C-448C-8DB6-FB6090B87DB1"}
  */
 function getTableSchemaDiff(table, header) {
+	/**@type {Array<String>} */
     var missingColumns = [];
     var tableColumnNames = table.getColumnNames();
     for (var i = 0; i < header.length; i++) {
